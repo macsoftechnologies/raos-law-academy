@@ -19,6 +19,18 @@ const { width } = Dimensions.get("window");
 export default function LoginScreen() {
   const [secure, setSecure] = useState(true);
 
+
+const handlecarry = ()  =>{
+    router.push({
+pathname: '/dashboard/dashboard',
+params: {
+  "userId": 1232,
+  "name": "varsha",
+  
+}
+})
+}
+
   return (
     <View style={{ flex: 1, backgroundColor: "#EEF1F7" }}>
 
@@ -82,13 +94,13 @@ export default function LoginScreen() {
             </View>
 
             {/* Forgot Password */}
-            <TouchableOpacity style={styles.forgotBox}>
+            <TouchableOpacity style={styles.forgotBox}  onPress={()=> router.push('/onboardings/forgot_password')}>
               <Text style={styles.forgot}>Forgot Password?</Text>
             </TouchableOpacity>
 
-            {/* Login Button */}
-            <TouchableOpacity style={styles.loginBtn} onPress={()=> router.push('/onboardings/mobile_verify')}>
-              <Text style={styles.loginText}>Login</Text>
+          {/* Login Button */}
+            <TouchableOpacity style={styles.loginBtn} onPress={handlecarry}>
+              <Text style={styles.loginText}>Login</Text>         
             </TouchableOpacity>
 
             <TouchableOpacity style={{
@@ -101,14 +113,15 @@ export default function LoginScreen() {
 
             {/* Footer */}
             <Text style={styles.signup}>
-              Don’t have an account?{" "}
-              <TouchableOpacity
-                style={{ marginTop: 6 }}
-                onPress={() => router.push("/onboardings/registration")}
-              >
-                <Text style={styles.signupLink}>Signup</Text>
-              </TouchableOpacity>
-            </Text>
+  Don’t have an account?{" "}
+  <Text
+    style={styles.signupLink}
+    onPress={() => router.push("/onboardings/registration")}
+  >
+    Signup
+  </Text>
+</Text>
+            
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -125,7 +138,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
+ 
   image: {
     width: width * 0.7,
     height: 220,

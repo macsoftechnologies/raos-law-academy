@@ -13,11 +13,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0000",
-       
+        "backgroundColor": "#0000"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.law_app"
     },
     "web": {
       "output": "static",
