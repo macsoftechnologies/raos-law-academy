@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,36 @@ import {
   Pressable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import axios from "axios";
+
+interface SubCategoryDetails {
+  _id: string;
+  subcategory_id: string;
+  presentation_image: string;
+  title: string;
+  about_course: string;
+  terms_conditions: string;
+  categoryId: string;
+  createdAt: string;
+  updatedAt: string;
+  __v: number;
+}
+
+interface SubCategoryDetailsResponse {
+  statusCode: number;
+  message: string;
+  data: SubCategoryDetails;
+}
+
+
+
+
+
+
+
+
+
 
 const PLANS = [
   { id: "1y", price: 45000, original: 90000, label: "for 1 year" },
@@ -28,6 +57,37 @@ const TERMS = [
 ];
 
 export default function Coursepackage() {
+
+  const { sub_categoryId } = useLocalSearchParams<{ sub_categoryId: string }>();
+
+  
+
+  const [coursepackage, setCoursepackage] = useState<SubCategoryDetails[]>([]);
+
+
+  //  useEffect(() => {
+  //   if (!sub_categoryId) return;
+
+  //   const fetchUsercourselist = async () => {
+  //     try {
+  //       const response = await axios.post<SubCategoryDetails>(
+  //         `https://api.raoslawacademy.com/subcategories/getbycategory`, 
+  //         {
+  //              "subcategory_id": "37634c0a-1deb-4cee-aaa9-888f60af09c9"
+  //         }
+  //       );
+  //       if (response.data?.statusCode === 200) {
+  //         setCoursepackage(response.data.data);
+  //       }
+  //     } catch (error: any) {
+  //       console.log("User API Error:", error?.response?.data || error.message);
+  //     }
+  //   };
+  //   fetchUsercourselist();
+  // }, [sub_categoryId]);
+
+
+
   const [termsExpanded, setTermsExpanded] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
 
@@ -38,6 +98,8 @@ export default function Coursepackage() {
   const [couponInput, setCouponInput] = useState("");
 
   const plan = PLANS.find((p) => p.id === selectedPlan)!;
+  console.log(plan+"plan details");
+  
   const handlingFee = 53;
   const total = plan.price + handlingFee;
 
@@ -51,9 +113,28 @@ export default function Coursepackage() {
     setPayModalVisible(true);
   };
 
+
+  const handlePayOnline = () => {
+  console.log("Price:", plan.price);
+  console.log("Internet Handling Fee:", handlingFee);
+  console.log("Total:", total);
+
+  router.push({
+    pathname: "/paymentgateways/razorpay",
+    params: {
+      price: plan.price,
+      handlingFee: handlingFee,
+      total: total,
+    },
+  });
+};
+
   return (
     <SafeAreaView style={styles.safe}>
+
+
       <StatusBar barStyle="dark-content" />
+
 
       {/* Header */}
       <View style={styles.header}>
@@ -254,7 +335,7 @@ export default function Coursepackage() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.payBtn}>
+          <TouchableOpacity style={styles.payBtn}  onPress={handlePayOnline}>
             <Text style={styles.payBtnText}>Pay Online</Text>
           </TouchableOpacity>
         </View>

@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 export default function VerifyOTP() {
-  const [otp, setOtp] = useState<string[]>(['', '', '', '', '']);
+  const [otp, setOtp] = useState<string[]>(['', '', '', '']);
   const inputs = useRef<Array<TextInput | null>>([]);
 
   const handleChange = (value: string, index: number) => {
@@ -39,7 +39,7 @@ export default function VerifyOTP() {
       {/* Subtitle */}
       <Text style={styles.subtitle}>We sent a OTP to 1234567890</Text>
       <Text style={styles.subtitleSmall}>
-        enter 5 digit code that mentioned in the sms
+        enter 4 digit code that mentioned in the sms
       </Text>
 
       {/* OTP Boxes */}

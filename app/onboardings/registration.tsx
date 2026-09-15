@@ -12,11 +12,174 @@ import {
   Dimensions,
 } from 'react-native';
 import { router } from 'expo-router';
+import Toast from 'react-native-toast-message';
+import axios from 'axios'
 
 const { width, height } = Dimensions.get('window');
 
 export default function Registration() {
   const [isChecked, setIsChecked] = useState(false);
+  const [username, Setname]= useState("");
+  const [useremail,Setemail]=useState("")
+  const [userphonenumber,Setphonenumber]=useState("")
+  const [usercreatepassword,Setcreatepassword]=useState("")
+  const [userconfirmpassword,Setconfirmpassword]=useState("")
+
+const handleUserRegistration =async () => {
+  if (!username.trim()) {
+    Toast.show({
+      type: "info",
+      text1: "Validation",
+      text2: "Please enter username",
+    });
+    return;
+  }
+
+  if (!useremail.trim()) {
+    Toast.show({
+      type: "info",
+      text1: "Validation",
+      text2: "Please enter email",
+    });
+    return;
+  }
+
+  // Email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!emailRegex.test(useremail)) {
+    Toast.show({
+      type: "error",
+      text1: "Invalid Email",
+      text2: "Please enter a valid email address",
+    });
+    return;
+  }
+
+  if (!userphonenumber.trim()) {
+    Toast.show({
+      type: "info",
+      text1: "Validation",
+      text2: "Please enter phone number",
+    });
+    return;
+  }
+
+  // Phone validation
+  if (userphonenumber.length !== 10) {
+    Toast.show({
+      type: "error",
+      text1: "Invalid Phone Number",
+      text2: "Phone number must contain 10 digits",
+    });
+    return;
+  }
+
+  if (!usercreatepassword.trim()) {
+    Toast.show({
+      type: "info",
+      text1: "Validation",
+      text2: "Please enter password",
+    });
+    return;
+  }
+
+  // Password validation
+  if (usercreatepassword.length < 6) {
+    Toast.show({
+      type: "error",
+      text1: "Weak Password",
+      text2: "Password must be at least 6 characters",
+    });
+    return;
+  }
+
+  if (!userconfirmpassword.trim()) {
+    Toast.show({
+      type: "info",
+      text1: "Validation",
+      text2: "Please confirm your password",
+    });
+    return;
+  }
+
+  if (usercreatepassword !== userconfirmpassword) {
+    Toast.show({
+      type: "error",
+      text1: "Password Mismatch",
+      text2: "Passwords do not match",
+    });
+    return;
+  }
+
+  // Checkbox validation
+  if (!isChecked) {
+    Toast.show({
+      type: "info",
+      text1: "Validation",
+      text2: "Please accept the declaration",
+    });
+    return;
+  }
+
+  console.log({
+    username,
+    useremail,
+    userphonenumber,
+   usercreatepassword,
+    userconfirmpassword,
+  });
+
+try {
+  const response=  await axios.post(
+    "https://api.raoslawacademy.com/users/register",
+    {
+    "name": username,
+    "email": useremail,
+    "mobile_number":userphonenumber,
+    "password": usercreatepassword,
+    }
+  );
+
+  console.log(response.data.message);
+  
+
+
+  if (response.data.statusCode ===200){
+    Toast.show ({
+      type: "success",
+      text1:"user reg susccessfully  "
+    });
+    
+    router.back();
+
+
+  }
+
+  
+  if (response.data.statusCode ===409){
+    Toast.show ({
+      type: "error",
+      text1:"User already existed ",
+      text2: "u can proceed to login details "
+    })
+    router.back();
+
+
+  }
+
+
+} catch (error) {
+  Toast.show ({
+      type: "error",
+      text1:"something went wrong"
+    })
+}
+
+};
+
+
+
 
   return (
     <View style={styles.root}>
@@ -44,24 +207,31 @@ export default function Registration() {
             <Text style={styles.title}>Create New Account</Text>
 
             <Text style={styles.label}>Name</Text>
-            <TextInput style={styles.input} />
+            <TextInput  value={username}  onChangeText={Setname} style={styles.input} />
 
             <Text style={styles.label}>Email</Text>
             <TextInput
               style={styles.input}
               keyboardType="email-address"
+              value={useremail}
+              onChangeText={Setemail}
             />
 
             <Text style={styles.label}>Phone Number</Text>
             <TextInput
               style={styles.input}
               keyboardType="phone-pad"
+              value={userphonenumber}
+              onChangeText={Setphonenumber}
             />
 
             <Text style={styles.label}>Create Password</Text>
             <TextInput
               style={styles.input}
-              secureTextEntry
+               keyboardType="visible-password"
+              value={usercreatepassword}
+              onChangeText={Setcreatepassword}
+             
             />
 
             <Text style={styles.label}>Confirm Password</Text>
@@ -69,6 +239,8 @@ export default function Registration() {
               <TextInput
                 style={styles.passwordInput}
                 secureTextEntry
+                value={userconfirmpassword}
+                onChangeText={Setconfirmpassword}
               />
               <Text style={styles.eye}>👁️</Text>
             </View>
@@ -93,11 +265,11 @@ export default function Registration() {
             </View>
 
             
-            <TouchableOpacity style={styles.button} onPress={()=> router.push('/onboardings/referal')}>
+            <TouchableOpacity style={styles.button} onPress={handleUserRegistration}>
               <Text style={styles.buttonText}>Sign up</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={router.back}>
+            <TouchableOpacity onPress={handleUserRegistration}>
               <Text style={styles.footerText}>
                 Already Registered?{' '}
                 <Text style={styles.signIn}>Sign in</Text>

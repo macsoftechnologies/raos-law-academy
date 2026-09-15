@@ -1,203 +1,286 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
   Image,
-  SafeAreaView,
-  StatusBar,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import axios from "axios";
 
-const courses = [
-  {
-    id: "1",
-    title: "Andhra Pradesh Junior Civil Judge",
-    image: require("../../assets/images/Rectangle40.png"),
-    endDate: "Ends on 26th Jan",
-    duration: "2 years Course",
-    left: "2months left",
-  },
-  {
-    id: "2",
-    title: "Telangana Junior Civil Judge",
-    image: require("../../assets/images/Rectangle41.png"),
-    endDate: "Ends on 26th Jan",
-    duration: "2 years Course",
-    left: "2months left",
-  },
-];
+// ---- Types ----
+interface SubCategoryData {
+  _id: string;
+  subcategory_id: string;
+  presentation_image: string;
+  title: string;
+  about_course: string;
+  terms_conditions: string;
+  categoryId: string;
+  createdAt: string;
+  updatedAt: string;
+  __v: number;
+}
 
-export default function CourseOverview() {
-  const renderItem = ({ item }: { item: typeof courses[number] }) => (
-    <View style={styles.card}>
-      <Image source={item.image} style={styles.image} />
+interface SubCategoryResponse {
+  statusCode: number;
+  message: string;
+  data: SubCategoryData;
+}
 
-      <View style={styles.content}>
-        <View style={styles.row}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.endDate}>{item.endDate}</Text>
-          </View>
 
-          <View>
-            <View style={styles.redBadge}>
-              <Text style={styles.redBadgeText}>{item.left}</Text>
-            </View>
+export default function SubCategoryScreen() {
+  const { sub_categoryId } = useLocalSearchParams<{ sub_categoryId: string }>();
+const [subCategory, setSubCategory] = useState<SubCategoryData | null>(null);
+const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-            <View style={styles.blueBadge}>
-              <Text style={styles.blueBadgeText}>{item.duration}</Text>
-            </View>
-          </View>
-        </View>
+useEffect(() => {
+  const fetchSubCategory = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-     <TouchableOpacity
-  style={styles.button}
-  onPress={() => router.push("/explore/coursepackage")}
->
-  <Text style={styles.buttonText}>Open</Text>
-</TouchableOpacity>
-      </View>
-    </View>
-  );
+      const response = await axios.post<SubCategoryResponse>(
+        "https://api.raoslawacademy.com/subcategories/details",
+        {
+          subcategory_id: sub_categoryId??"37634c0a-1deb-4cee-aaa9-888f60af09c9",
+          // or subcategory_id: sub_categoryId
+        }
+      );
+ 
+      console.log("Response:", response.data);
+
+      if (response.data.statusCode === 200) {
+        setSubCategory(response.data.data);
+      } else {
+        setError("Couldn't load course.");
+      }
+    } catch (err: any) {
+      console.log(err?.response?.data || err.message);
+      setError("Couldn't load course.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchSubCategory();
+}, [sub_categoryId]);
+
+  // ---- Handlers ----
+  const handleViewDetails = (course: SubCategoryData) => {
+    router.push({
+      pathname: "/explore/coursepackage", // adjust to match your actual route
+      params: { id: course._id },
+    });
+  };
+
+  const handleBuyNow = (course: SubCategoryData) => {
+    router.push({
+      pathname: "/explore/coursepackage", // adjust to match your actual route
+      params: { courseId: course._id, subcategoryId: course.subcategory_id },
+    });
+
+    console.log("Buy Now clicked for course:", JSON.stringify(course));
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={28} color="#000" />
+        <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
+          <Ionicons name="chevron-back" size={26} color="#0A1A3B" />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>Junior Civil Judge</Text>
+        <Text style={styles.headerTitle}>Course</Text>
 
-        <View style={{ width: 28 }} />
+        <View style={{ width: 26 }} />
       </View>
 
-      {/* Course List */}
-      <FlatList
-        data={courses}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 30 }}
-        showsVerticalScrollIndicator={false}
+      {/* {loading ? (
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color="#0A1A3B" />
+        </View>
+      ) : error ? (
+        <View style={styles.centerState}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : subCategoryList.length === 0 ? (
+        <View style={styles.centerState}>
+          <Text style={styles.emptyText}>No courses available right now.</Text>
+        </View>
+      ) : ( */}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+       {loading ? (
+  <View style={styles.centerState}>
+    <ActivityIndicator size="large" color="#0A1A3B" />
+  </View>
+) : error ? (
+  <View style={styles.centerState}>
+    <Text style={styles.errorText}>{error}</Text>
+  </View>
+) : subCategory ? (
+  <ScrollView
+    contentContainerStyle={styles.scrollContent}
+    showsVerticalScrollIndicator={false}
+  >
+    <View style={styles.card}>
+      <Image
+        source={{
+          uri: `https://api.raoslawacademy.com/uploads/${subCategory.presentation_image}`,
+        }}
+        style={styles.cardImage}
+        resizeMode="cover"
       />
-    </SafeAreaView>
+
+      <View style={styles.cardBody}>
+        <Text style={styles.cardTitle}>
+          {subCategory.title}
+        </Text>
+
+
+        <Text style={styles.cardDescription}  ellipsizeMode="tail">
+   {subCategory.about_course}
+</Text>
+
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.exploreButton]}
+            onPress={() => handleViewDetails(subCategory)}
+          >
+            <Text style={styles.exploreButtonText}>
+              Explore More
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.buyButton]}
+            onPress={() => handleBuyNow(subCategory)}
+          >
+            <Text style={styles.buyButtonText}>
+              Buy Now
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </ScrollView>
+) : (
+  <View style={styles.centerState}>
+    <Text>No course found.</Text>
+  </View>
+)}
+        </ScrollView>
+      {/* )} */}
+    </View>
   );
 }
 
+// ---- Styles ----
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#EEF2F8",
-    paddingHorizontal: 25,
-    paddingTop: 30,
+    backgroundColor: "#FFFFFF",
   },
-
   header: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 15,
     justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EEF0F4",
   },
-
   headerTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#111",
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#0A1A3B",
   },
-
+  centerState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  errorText: {
+    fontSize: 15,
+    color: "#B00020",
+    textAlign: "center",
+  },
+  emptyText: {
+    fontSize: 15,
+    color: "#6B7280",
+    textAlign: "center",
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    marginBottom: 22,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    marginBottom: 16,
     overflow: "hidden",
-
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
-
-  image: {
+  cardImage: {
     width: "100%",
-    height: 180,
-    resizeMode: "cover",
+    height: 160,
+    backgroundColor: "#F3F4F6",
   },
-
-  content: {
+  cardBody: {
     padding: 14,
   },
-
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-
-  title: {
-    fontSize: 25,
-    fontWeight: "700",
-    color: "#222",
-    paddingRight: 10,
-  },
-
-  endDate: {
-    marginTop: 8,
+  cardTitle: {
     fontSize: 16,
-    color: "#8B2020",
-    fontWeight: "600",
-  },
-
-  redBadge: {
-    backgroundColor: "#F9E9EA",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-    marginBottom: 8,
-    alignItems: "center",
-  },
-
-  redBadgeText: {
-    color: "#8B2020",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
-  blueBadge: {
-    backgroundColor: "#E9F0FF",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-
-  blueBadgeText: {
-    color: "#2048B5",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
-  button: {
-    marginTop: 18,
-    height: 52,
-    backgroundColor: "#24469C",
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  buttonText: {
-    color: "#fff",
     fontWeight: "700",
-    fontSize: 20,
+    color: "#0A1A3B",
+    marginBottom: 4,
+  },
+  cardDescription: {
+    fontSize: 13,
+    color: "#6B7280",
+    lineHeight: 18,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    marginTop: 12,
+    gap: 10,
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  exploreButton: {
+    backgroundColor: "#F1F4FA",
+    borderWidth: 1,
+    borderColor: "#0A1A3B",
+  },
+  exploreButtonText: {
+    color: "#0A1A3B",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  buyButton: {
+    backgroundColor: "#0A1A3B",
+  },
+  buyButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+    fontSize: 13,
   },
 });

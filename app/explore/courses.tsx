@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,35 +7,79 @@ import {
   TouchableOpacity,
   Image,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import axios from "axios";
 
-const COURSES = [
-  {
-    id: 1,
-    title: "Andhra Pradesh Junior Civil Judge",
-    price: "₹90,000",
-    oldPrice: "₹1,30,000",
-    image: require("../../assets/images/Rectangle40.png"),
-  },
-  {
-  id: 2,
-  title: "Telangana Junior Civil Judge",
-  price: "₹90,000",
-  oldPrice: "₹1,30,000",
-  image: require("../../assets/images/Rectangle41.png"),
- },
+interface Category {
+  _id: string;
+  categoryId: string;
+  category_name: string;
+  tag_text: string;
+  presentation_file: string;
+  createdAt: string;
+  updatedAt: string;
+  __v: number;
+}
 
-];
+interface SubCategory {
+  _id: string;
+  subcategory_id: string;
+  presentation_image: string;
+  title: string;
+  about_course: string;
+  terms_conditions: string;
+  categoryId: Category[];
+  createdAt: string;
+  updatedAt: string;
+  __v: number;
+}
+
+interface SubCategoriesResponse {
+  statusCode: number;
+  message: string;
+  totalCount: number;
+  currentPage: number;
+  totalPages: number;
+  limit: number;
+  data: SubCategory[];
+}
+
+const IMAGE_BASE_URL = "https://api.raoslawacademy.com/uploads/subcategories/";
 
 export default function Courses() {
-  const handleBuyNow = (course: (typeof COURSES)[number]) => {
+  const { sub_categoryId } = useLocalSearchParams<{ sub_categoryId: string }>();
+
+  console.log("received subcategory id: " + sub_categoryId);
+  
+
+  const [courselist, setCourselist] = useState<SubCategory[]>([]);
+
+  const handleBuyNow = (course: SubCategory) => {
     console.log("Buy:", course.title);
   };
 
-  const handleViewDetails = (course: (typeof COURSES)[number]) => {
-    console.log("Details:", course.title);
+  const handleViewDetails = (course: SubCategory) => {
+    router.push({
+      pathname: "/explore/courseoverview",
+      params: { sub_categoryId: course.subcategory_id },
+    
+    });
   };
+
+ useEffect(() => {
+  const fetchUsercourselist = async () => {
+    try {
+      const response = await axios.get("https://api.raoslawacademy.com/subcategories?page=1&limit=10"); // <-- confirm correct endpoint
+      if (response.data?.statusCode === 200) {
+        setCourselist(response.data.data);
+      } 
+    } catch (error: any) {
+      console.log("User API Error:", error?.response?.data || error.message);
+    }
+  };
+  fetchUsercourselist();
+}, []);
 
   return (
     <View style={styles.container}>
@@ -51,22 +95,24 @@ export default function Courses() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {COURSES.map((item) => (
-          <View key={item.id} style={styles.card}>
-            <Image source={item.image} style={styles.image} />
+        {courselist.map((item) => (
+          <View key={item._id} style={styles.card}>
+            <Image
+              source={
+                item.presentation_image
+                  ? { uri: `https://api.raoslawacademy.com/${item.presentation_image}` }
+                  : require("../../assets/images/Rectangle40.png")
+              }
+              style={styles.image}
+            />
 
             <View style={styles.content}>
               <Text style={styles.title}>{item.title}</Text>
 
-              <View style={styles.priceRow}>
-                <Text style={styles.price}>{item.price}</Text>
-                <Text style={styles.oldPrice}>{item.oldPrice}</Text>
-              </View>
-
               <View style={styles.buttonRow}>
                 <TouchableOpacity
                   style={styles.buyButton}
-                  onPress={() => handleBuyNow(item)}
+                  onPress={(() => handleBuyNow(item))}
                 >
                   <Text style={styles.buyText}>Buy Now</Text>
                 </TouchableOpacity>
@@ -102,7 +148,7 @@ const styles = StyleSheet.create({
   },
 
   headerTitle: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: "700",
     color: "#111",
   },
@@ -124,7 +170,7 @@ const styles = StyleSheet.create({
 
   image: {
     width: "100%",
-    height: 190,
+    height: 180,
     resizeMode: "cover",
   },
 
@@ -133,7 +179,7 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: "700",
     color: "#111",
     marginBottom: 10,
@@ -146,7 +192,7 @@ const styles = StyleSheet.create({
   },
 
   price: {
-    fontSize: 30,
+    fontSize: 25,
     color: "#23439C",
     fontWeight: "bold",
   },
@@ -183,13 +229,13 @@ const styles = StyleSheet.create({
 
   buyText: {
     color: "#23439C",
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
   },
 
   detailsText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
   },
 });
