@@ -10,6 +10,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface Category {
   _id: string;
@@ -68,17 +69,21 @@ export default function Courses() {
   };
 
  useEffect(() => {
-  const fetchUsercourselist = async () => {
+  const fetchUsercategories = async () => {
     try {
-      const response = await axios.get("https://api.raoslawacademy.com/subcategories?page=1&limit=10"); // <-- confirm correct endpoint
+      const token = await AsyncStorage.getItem("token");
+      const response = await axios.get(
+        "https://api.raoslawacademy.com/categories?page=1&limit=10",
+        { headers: { Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImZpbmRBZG1pbiI6eyJfaWQiOiI2OTZmNGQ4M2Q4OTRhOWY3Y2Y4NTJhMjEiLCJlbWFpbElkIjoiYWRtaW4xQGdtYWlsLmNvbSIsIm1vYmlsZU51bWJlciI6Ijg5MTk1NTY0MDEiLCJwYXNzd29yZCI6IiQyYiQxMCRMeG83aldsRWUva1ZwZFQ0VFFGSk11akw0Z2F2OEpBZmFyTFV1M290QWp3bFc4NXNkcWlwbSIsInJvbGUiOiJ0ZWFjaGVyIiwiYWNjZXNzX21vZHVsZXMiOlsicXVlc3Rpb25fcGFwZXJzIiwicmVzdWx0cyIsInN0dWRlbnRzIl0sImFkbWluSWQiOiJkNDhkOGNjOC0zZWQ3LTRkNGYtYjVmYy03ZjI0MmE4MTBmOGMiLCJjcmVhdGVkQXQiOiIyMDI2LTAxLTIwVDA5OjQwOjE5Ljk0OVoiLCJ1cGRhdGVkQXQiOiIyMDI2LTA5LTE3VDA5OjM1OjA0Ljk5NloiLCJfX3YiOjAsImFjdGl2ZVRva2VuU2Vzc2lvbklkIjoiOGIyMDE2ZTQtZDk4OC00NjA1LThkNDYtZmE5M2IyZTYwZDJmIiwic2Vzc2lvbkV4cGlyZXNBdCI6IjIwMjYtMDktMjRUMDk6MzU6MDQuMDAwWiJ9fSwic2Vzc2lvbklkIjoiMDRjM2Y1Y2ItNTE1YS00MjYxLTg5Y2ItNGU2MjZhMDZiMzcxIiwiaWF0IjoxNzg5NjQyNjU1LCJleHAiOjE3OTAyNDc0NTV9.dfycU6A67d8WoC8tLCXALz5s00qvvpwqn_uQPFmTHMg` } }
+      );
       if (response.data?.statusCode === 200) {
         setCourselist(response.data.data);
-      } 
+      }
     } catch (error: any) {
-      console.log("User API Error:", error?.response?.data || error.message);
+      console.log("Categories API Error:", error?.response?.data || error.message);
     }
   };
-  fetchUsercourselist();
+  fetchUsercategories();
 }, []);
 
   return (

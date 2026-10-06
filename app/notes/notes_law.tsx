@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.lineGray,
   },
   lockOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    
     backgroundColor: "rgba(255,255,255,0.55)",
     alignItems: "center",
     justifyContent: "center",

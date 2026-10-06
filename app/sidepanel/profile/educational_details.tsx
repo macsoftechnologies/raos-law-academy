@@ -8,7 +8,11 @@ import {
   StatusBar,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons, Feather, MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
+import {
+  Ionicons,
+  MaterialCommunityIcons,
+  MaterialIcons,
+} from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import axios from "axios";
 
@@ -149,7 +153,7 @@ export default function EducationalDetails() {
           activeOpacity={0.7}
           onPress={() => router.push("/sidepanel/profile/educational_info")}
         >
-          <Feather name="edit-2" size={14} color="#0A1A3B" />
+          <MaterialIcons name="edit" size={14} color="#0A1A3B" />
           <Text style={styles.editText}>Edit</Text>
         </TouchableOpacity>
       </View>

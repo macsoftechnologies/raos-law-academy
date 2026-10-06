@@ -1,227 +1,168 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
+  TouchableOpacity,
   TextInput,
-  StatusBar,
-  ActivityIndicator,
+  SafeAreaView,
+  Alert,
 } from "react-native";
-import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { Ionicons, Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import axios from "axios";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// ---------- Types ----------
-interface TermsCondition {
+interface CommonIssue {
+  id: string;
+  label: string;
+  icon: keyof typeof Feather.glyphMap;
+  ticketType: TicketType;
+}
+
+type TicketType = "course" | "support";
+
+const COMMON_ISSUES: CommonIssue[] = [
+  { id: "1", label: "Course Content Access", icon: "credit-card", ticketType: "course" },
+  { id: "2", label: "Payment & Billing", icon: "credit-card", ticketType: "support" },
+  { id: "3", label: "Payment & Billing", icon: "settings", ticketType: "support" },
+];
+
+interface TicketData {
+  userId: string;
+  title: string;
+  description: string;
+  ticket_type: TicketType;
+  status: "pending" | "in_progress" | "resolved" | "closed";
+  callScheduled: boolean;
+  callScheduledAt: string | null;
+  callStatus: "none" | "scheduled" | "completed" | "missed";
+  unreadCountStudent: number;
+  unreadCountAdmin: number;
+  lastMessageAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
   _id: string;
-  test_term_id: string;
-  terms_conditions: string[];
-  testType: "QZ" | "GT" | "SMT" | string;
-  instructions: string[];
+  ticketId: string;
+  messages: unknown[];
   createdAt: string;
   updatedAt: string;
   __v: number;
 }
 
-interface TermsConditionsResponse {
-  statusCode: number;
+interface CreateTicketResponse {
+  success: boolean;
   message: string;
-  totalCount: number;
-  currentPage: number;
-  totalPages: number;
-  limit: number;
-  data: TermsCondition[];
+  data: TicketData;
 }
 
-interface CommonIssue {
-  id: string;
-  label: string;
-  icon: "receipt" | "credit-card" | "settings";
-}
+const CREATE_TICKET_URL = "https://api.raoslawacademy.com/tickets/create";
 
-const COLORS = {
-  navy: "#0A1A3B",
-  blue: "#23408E",
-  maroon: "#7A1F2B",
-  background: "#EDEEF5",
-  cardBg: "#FFFFFF",
-  gray: "#8A8FA3",
-  errorRed: "#B3261E",
+// Builds a short title from the description since the UI only collects one field.
+const deriveTitle = (description: string) => {
+  const trimmed = description.trim();
+  return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
 };
 
-const COMMON_ISSUES: CommonIssue[] = [
-  { id: "1", label: "Course Content Access", icon: "receipt" },
-  { id: "2", label: "Payment & Billing", icon: "credit-card" },
-  { id: "3", label: "Account Settings", icon: "settings" },
-];
-
-export default function Help() {
+export default function HelpCenterScreen() {
   const [problem, setProblem] = useState("");
-  const { test_term_id: paramTestTermId } = useLocalSearchParams<{
-    test_term_id?: string;
-  }>();
+  const [ticketType, setTicketType] = useState<TicketType>("support");
+  const [submitting, setSubmitting] = useState(false);
 
-  // TEMP: falls back to a hardcoded test ID when no param is passed.
-  // Remove the fallback once real navigation always supplies test_term_id.
-  const test_term_id =
-    paramTestTermId ?? "55fd83b6-4add-499d-8527-e439542b0a16";
 
-  const [terms, setTerms] = useState<TermsCondition | null>(null);
-  const [termsLoading, setTermsLoading] = useState(false);
-  const [termsError, setTermsError] = useState<string | null>(null);
 
-  useEffect(() => {
-    console.log("useEffect called");
+ const handleSubmit = async () => {
+  console.log("handleSubmit called, problem:", problem);   // <-- add this
+  if (!problem.trim() || submitting) return;
 
-    if (!test_term_id) {
-      console.log("No test_term_id provided — skipping terms fetch");
+  try {
+    setSubmitting(true);
+
+    const userId = await AsyncStorage.getItem("userId");
+    console.log("userId from storage:", userId);            // <-- add this
+    if (!userId) {
+      Alert.alert("Error", "You need to be logged in to submit a ticket.");
       return;
     }
 
-    const fetchTerms = async () => {
-      console.log("API calling...");
-      setTermsLoading(true);
-      setTermsError(null);
-      try {
-        const response = await axios.get<TermsConditionsResponse>(
-          "https://api.raoslawacademy.com/test-terms?page=1&limit=10"
-        );
+    console.log("Sending ticket request:", {                // <-- add this
+      userId,
+      title: deriveTitle(problem),
+      description: problem,
+      ticket_type: ticketType,
+    });
 
-        console.log("Response:", response.data);
+    const response = await axios.post<CreateTicketResponse>(
+  "https://api.raoslawacademy.com/tickets/create",
+  {
+    userId,
+    title: deriveTitle(problem),
+    description: problem,
+    ticket_type: ticketType,
+  },
+  { timeout: 10000 }
+);
 
-        if (response.data?.statusCode === 200) {
-          const match = response.data.data.find(
-            (t) => t.test_term_id === test_term_id
-          );
-          if (match) {
-            setTerms(match);
-          } else {
-            setTermsError("No terms & conditions found for this test.");
-          }
-        } else {
-          setTermsError("Couldn't load terms & conditions right now.");
-        }
-      } catch (error: any) {
-        console.log("API Error:", error);
-        console.log("Response:", error?.response?.data);
-        setTermsError("Couldn't load terms & conditions right now.");
-      } finally {
-        setTermsLoading(false);
+      if (response.data.success) {
+        setProblem("");
+        setTicketType("support");
+        router.push({
+          pathname: "/sidepanel/help_center/help",
+          params: { ticketId: response.data.data.ticketId },
+        });
+      } else {
+        Alert.alert("Error", response.data.message || "Failed to submit ticket.");
       }
-    };
-
-    fetchTerms();
-  }, [test_term_id]);
-
-  const renderIcon = (icon: CommonIssue["icon"]) => {
-    switch (icon) {
-      case "receipt":
-        return (
-          <MaterialCommunityIcons
-            name="text-box-outline"
-            size={20}
-            color={COLORS.blue}
-          />
-        );
-      case "credit-card":
-        return <Feather name="credit-card" size={20} color={COLORS.blue} />;
-      case "settings":
-        return <Ionicons name="settings-outline" size={20} color={COLORS.blue} />;
+    } catch (error: any) {
+      console.log(
+        "Ticket submit error:",
+        error?.response?.status,
+        error?.response?.data,
+        error?.message
+      );
+      Alert.alert(
+        "Error",
+        error?.response?.data?.message ||
+          `Something went wrong (${error?.response?.status ?? "no response"}). Please try again.`
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleIssuePress = (issue: CommonIssue) => {
-    router.push({
-      pathname: "/sidepanel/help_center/help_issue",
-      params: { id: issue.id },
-    });
-  };
-
-  const handleSubmit = () => {
-    if (!problem.trim()) return;
-    router.push({
-      pathname: "/sidepanel/help_center/help_issue",
-      params: { description: problem },
-    });
+    setProblem(issue.label);
+    setTicketType(issue.ticketType);
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
-
+    <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="chevron-back" size={24} color={COLORS.navy} />
+        <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
+          <Ionicons name="chevron-back" size={26} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Help Center</Text>
         <TouchableOpacity
           style={styles.ticketsButton}
-          onPress={() => router.push("/sidepanel/help_center/help_issue")}
+          onPress={() => router.push("/sidepanel/help_center/help")}
         >
-          <Text style={styles.ticketsButtonText}>Tickets Statuss</Text>
+          <Text style={styles.ticketsButtonText}>Tickets Status</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Terms & Conditions (only shown when test_term_id is passed in) */}
-        {test_term_id && (
-          <View style={styles.termsCard}>
-            <Text style={styles.sectionHeading}>Test Terms & Conditions</Text>
-
-            {termsLoading && (
-              <View style={styles.termsLoadingRow}>
-                <ActivityIndicator size="small" color={COLORS.blue} />
-                <Text style={styles.termsLoadingText}>Loading terms…</Text>
-              </View>
-            )}
-
-            {!termsLoading && termsError && (
-              <Text style={styles.termsErrorText}>{termsError}</Text>
-            )}
-
-            {!termsLoading && !termsError && terms && (
-              <>
-                <Text style={styles.termsTypeLabel}>
-                  Test Type: {terms.testType}
-                </Text>
-
-                {terms.terms_conditions.map((line, idx) => (
-                  <View key={`tc-${idx}`} style={styles.bulletRow}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.bulletText}>{line}</Text>
-                  </View>
-                ))}
-
-                <Text style={[styles.termsTypeLabel, { marginTop: 14 }]}>
-                  Instructions
-                </Text>
-                {terms.instructions.map((line, idx) => (
-                  <View key={`ins-${idx}`} style={styles.bulletRow}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.bulletText}>{line}</Text>
-                  </View>
-                ))}
-              </>
-            )}
-          </View>
-        )}
-
-        {/* Problem Description Box */}
-        <View style={styles.describeBox}>
+        {/* Problem input */}
+        <View style={styles.inputContainer}>
           <TextInput
-            style={styles.describeInput}
+            style={styles.input}
             placeholder="Describe your problem..."
-            placeholderTextColor={COLORS.gray}
+            placeholderTextColor="#6B7280"
             value={problem}
             onChangeText={setProblem}
             multiline
@@ -229,185 +170,140 @@ export default function Help() {
           />
         </View>
 
-        {/* Common Issues */}
-        <Text style={styles.sectionHeading}>Common Issues</Text>
+        {/* Common issues */}
+        <Text style={styles.sectionTitle}>Common Issues</Text>
+
         {COMMON_ISSUES.map((issue) => (
           <TouchableOpacity
             key={issue.id}
             style={styles.issueRow}
-            activeOpacity={0.75}
             onPress={() => handleIssuePress(issue)}
+            activeOpacity={0.7}
           >
-            {renderIcon(issue.icon)}
+            <View style={styles.issueIconWrap}>
+              <Feather name={issue.icon} size={18} color="#2563EB" />
+            </View>
             <Text style={styles.issueLabel}>{issue.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {/* Submit Button */}
-      <View style={styles.submitWrapper}>
+      {/* Submit button */}
+      <View style={styles.footer}>
         <TouchableOpacity
           style={[
             styles.submitButton,
-            !problem.trim() && styles.submitButtonDisabled,
+            (!problem.trim() || submitting) && styles.submitButtonDisabled,
           ]}
           onPress={handleSubmit}
-          disabled={!problem.trim()}
+          disabled={!problem.trim() || submitting}
         >
-          <Text style={styles.submitButtonText}>Submit Problem</Text>
+          <Text style={styles.submitButtonText}>
+            {submitting ? "Submitting..." : "Submit Problem"}
+          </Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#E9EDF5",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 16,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 4,
+    paddingHorizontal: 16,
+    paddingTop: 38,
+    paddingBottom: 12,
   },
   headerTitle: {
-    fontSize: 19,
+    fontSize: 20,
     fontWeight: "700",
-    color: COLORS.navy,
-    flex: 1,
+    color: "#111827",
   },
   ticketsButton: {
-    backgroundColor: COLORS.maroon,
-    borderRadius: 10,
+    backgroundColor: "#6B1B1B",
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 8,
+    borderRadius: 8,
+    paddingTop:6,
   },
   ticketsButtonText: {
-    fontSize: 12.5,
-    fontWeight: "600",
     color: "#FFFFFF",
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  termsCard: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 20,
-    shadowColor: COLORS.navy,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  termsLoadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  termsLoadingText: {
-    color: "#4A5578",
     fontSize: 13,
+    fontWeight: "600",
   },
-  termsErrorText: {
-    color: COLORS.errorRed,
-    fontSize: 13,
-  },
-  termsTypeLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.blue,
-    marginBottom: 8,
-  },
-  bulletRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 6,
-  },
-  bulletDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: COLORS.blue,
-    marginTop: 6,
-    marginRight: 8,
-  },
-  bulletText: {
+  body: {
     flex: 1,
-    fontSize: 13,
-    color: COLORS.navy,
-    lineHeight: 18,
   },
-  describeBox: {
+  bodyContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    paddingTop: 18
+  },
+  inputContainer: {
     borderWidth: 1.5,
-    borderColor: COLORS.blue,
-    borderRadius: 16,
+    borderColor: "#2563EB",
+    borderRadius: 14,
     padding: 14,
-    backgroundColor: COLORS.cardBg,
-    marginBottom: 24,
+    backgroundColor: "#F3F5FA",
   },
-  describeInput: {
-    height: 130,
-    fontSize: 14,
-    color: COLORS.navy,
+  input: {
+    minHeight: 120,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    color: "#111827",
   },
-  sectionHeading: {
-    fontSize: 16,
+  sectionTitle: {
+    fontSize: 17,
     fontWeight: "700",
-    color: COLORS.navy,
+    color: "#111827",
+    marginTop: 20,
     marginBottom: 12,
+  
   },
   issueRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 14,
-    paddingHorizontal: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
     paddingVertical: 16,
+    paddingHorizontal: 14,
     marginBottom: 12,
-    shadowColor: COLORS.navy,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
+  },
+  issueIconWrap: {
+    width: 28,
+    alignItems: "center",
+    marginRight: 12,
   },
   issueLabel: {
-    fontSize: 14,
+    fontSize: 15,
+    color: "#111827",
     fontWeight: "500",
-    color: COLORS.navy,
-    marginLeft: 12,
   },
-  submitWrapper: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
+  footer: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
     paddingTop: 8,
-    backgroundColor: COLORS.background,
   },
   submitButton: {
-    backgroundColor: COLORS.navy,
+    backgroundColor: "#1E3A8A",
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: "center",
   },
   submitButtonDisabled: {
-    backgroundColor: "#8A93B3",
+    opacity: 0.5,
   },
   submitButtonText: {
-    fontSize: 15,
-    fontWeight: "700",
     color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });
