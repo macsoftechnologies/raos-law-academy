@@ -93,7 +93,7 @@ export default function MainProfile() {
     try {
       const response = await axios.post<StudentDetailsResponse>(
         `https://api.raoslawacademy.com/users/details`,
-        { userId:"7b682881-2d36-41b4-aca9-a9540bff291f" }
+        { userId: "7b682881-2d36-41b4-aca9-a9540bff291f" }
       );
 
       if (response.data.statusCode === 200 && response.data.data?.length > 0) {

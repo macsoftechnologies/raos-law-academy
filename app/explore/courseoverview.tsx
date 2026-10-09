@@ -11,6 +11,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import axios from "axios";
+import { getImageUrl, FALLBACK_COURSE_IMAGE, apiClient } from "@/src/api/client";
+import { parseApiError } from "@/src/api/errorHandler";
 
 // ---- Types ----
 interface SubCategoryData {
@@ -32,60 +34,94 @@ interface SubCategoryResponse {
   data: SubCategoryData;
 }
 
-
 export default function SubCategoryScreen() {
-  const { sub_categoryId } = useLocalSearchParams<{ sub_categoryId: string }>();
-const [subCategory, setSubCategory] = useState<SubCategoryData | null>(null);
-const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const params = useLocalSearchParams<{
+    sub_categoryId?: string;
+    subcategoryId?: string;
+    subcategory_id?: string;
+    courseId?: string;
+    id?: string;
+  }>();
 
-useEffect(() => {
+  const effectiveSubcategoryId =
+    params.subcategory_id ||
+    params.sub_categoryId ||
+    params.subcategoryId ||
+    (params.courseId && params.courseId.includes("-") ? params.courseId : undefined) ||
+    "37634c0a-1deb-4cee-aaa9-888f60af09c9";
+
+  const [subCategory, setSubCategory] = useState<SubCategoryData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
+
   const fetchSubCategory = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await axios.post<SubCategoryResponse>(
-        "https://api.raoslawacademy.com/subcategories/details",
+      const response = await apiClient.post<SubCategoryResponse>(
+        "/subcategories/details",
         {
-          subcategory_id: sub_categoryId??"37634c0a-1deb-4cee-aaa9-888f60af09c9",
-          // or subcategory_id: sub_categoryId
+          subcategory_id: effectiveSubcategoryId,
         }
       );
- 
-      console.log("Response:", response.data);
 
-      if (response.data.statusCode === 200) {
+      if (
+        response.data?.statusCode === 200 ||
+        response.data?.statusCode === 201 ||
+        response.status === 200
+      ) {
         setSubCategory(response.data.data);
       } else {
-        setError("Couldn't load course.");
+        setError(response.data?.message || "Couldn't load course.");
       }
     } catch (err: any) {
-      console.log(err?.response?.data || err.message);
-      setError("Couldn't load course.");
+      console.log("Subcategory fetch error:", err?.response?.data || err.message);
+      const parsed = parseApiError(err);
+      setError(parsed.message || "Couldn't load course.");
     } finally {
       setLoading(false);
     }
   };
 
-  fetchSubCategory();
-}, [sub_categoryId]);
+  useEffect(() => {
+    fetchSubCategory();
+  }, [effectiveSubcategoryId]);
 
   // ---- Handlers ----
   const handleViewDetails = (course: SubCategoryData) => {
     router.push({
-      pathname: "/explore/coursepackage", // adjust to match your actual route
-      params: { id: course._id },
+      pathname: "/explore/coursepackage",
+      params: {
+        sub_categoryId: course.subcategory_id,
+        subcategoryId: course.subcategory_id,
+        courseId: course.subcategory_id,
+        id: course._id,
+        title: course.title,
+      },
     });
   };
 
   const handleBuyNow = (course: SubCategoryData) => {
-    router.push({
-      pathname: "/explore/coursepackage", // adjust to match your actual route
-      params: { courseId: course._id, subcategoryId: course.subcategory_id },
+    console.log("Buy Now clicked for course:", {
+      _id: course._id,
+      subcategory_id: course.subcategory_id,
+      title: course.title,
+      categoryId: course.categoryId,
     });
 
-    console.log("Buy Now clicked for course:", JSON.stringify(course));
+    router.push({
+      pathname: "/explore/coursepackage",
+      params: {
+        sub_categoryId: course.subcategory_id,
+        subcategoryId: course.subcategory_id,
+        courseId: course.subcategory_id,
+        id: course._id,
+        title: course.title,
+        buyNow: "true",
+      },
+    });
   };
 
   return (
@@ -133,9 +169,13 @@ useEffect(() => {
   >
     <View style={styles.card}>
       <Image
-        source={{
-          uri: `https://api.raoslawacademy.com/uploads/${subCategory.presentation_image}`,
-        }}
+        source={
+          (!getImageUrl(subCategory.presentation_image) || imageError)
+            ? FALLBACK_COURSE_IMAGE
+            : { uri: getImageUrl(subCategory.presentation_image) }
+        }
+        onError={() => setImageError(true)}
+        defaultSource={FALLBACK_COURSE_IMAGE}
         style={styles.cardImage}
         resizeMode="cover"
       />

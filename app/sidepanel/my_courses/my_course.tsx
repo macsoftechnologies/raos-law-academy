@@ -155,7 +155,7 @@ export default function MyCourse() {
     try {
       const response = await axios.post<GetUserCoursesResponse>(
         `https://api.raoslawacademy.com/enrollments/user_courses`,
-        { userId :"4237c5bb-30d1-495a-96f8-d70ba48ec110" },
+        { userId: "4237c5bb-30d1-495a-96f8-d70ba48ec110" },
       );
 
       if (response.data.statusCode === 200) {
@@ -189,74 +189,74 @@ export default function MyCourse() {
 
 
   const handleContinueCourse = (enrollment: UserCourseEnrollment) => {
-  const { courseDetails, enroll_type, course_id, enroll_id } = enrollment;
+    const { courseDetails, enroll_type, course_id, enroll_id } = enrollment;
 
-  if (!courseDetails) {
-    Toast.show({
-      type: "error",
-      text1: "Course unavailable",
-      text2: "We couldn't find details for this course.",
-    });
-    return;
-  }
-
-  switch (enroll_type) {
-    case "notes":
-      router.push({
-        pathname: "/sidepanel/my_courses/ap_course",
-        params: {
-        overviewdata: JSON.stringify(courseDetails),
-        },
-      });
-      break;
-
-    case "mains":
-      router.push({
-        pathname: "/sidepanel/my_courses/ap_course",
-        params: {
-          overviewdata: JSON.stringify(courseDetails),
-        },
-      });
-      break;
-
-    case "prelimes":
-      router.push({
-        pathname: "/sidepanel/my_courses/ap_course",
-        params: {
-           overviewdata: JSON.stringify(courseDetails),
-        },
-      });
-      break;
-
-    case "combination":
-      router.push({
-        pathname:"/sidepanel/my_courses/ap_course",
-        params: {
-          id: (courseDetails as ComboCourseDetails).combo_id,
-          enrollId: enroll_id,
-        },
-      });
-      break;
-
-    case "full-course":
-    case "subject-wise":
-      router.push({
-        pathname:"/sidepanel/my_courses/ap_course",
-        params: {
-          id: course_id,
-          enrollId: enroll_id,
-        },
-      });
-      break;
-
-    default:
+    if (!courseDetails) {
       Toast.show({
         type: "error",
-        text1: "Unsupported course type",
-        text2: `Can't open course type "${enroll_type}".`,
+        text1: "Course unavailable",
+        text2: "We couldn't find details for this course.",
       });
-  }
-};
+      return;
+    }
+
+    switch (enroll_type) {
+      case "notes":
+        router.push({
+          pathname: "/sidepanel/my_courses/ap_course",
+          params: {
+            overviewdata: JSON.stringify(courseDetails),
+          },
+        });
+        break;
+
+      case "mains":
+        router.push({
+          pathname: "/sidepanel/my_courses/ap_course",
+          params: {
+            overviewdata: JSON.stringify(courseDetails),
+          },
+        });
+        break;
+
+      case "prelimes":
+        router.push({
+          pathname: "/sidepanel/my_courses/ap_course",
+          params: {
+            overviewdata: JSON.stringify(courseDetails),
+          },
+        });
+        break;
+
+      case "combination":
+        router.push({
+          pathname: "/sidepanel/my_courses/ap_course",
+          params: {
+            id: (courseDetails as ComboCourseDetails).combo_id,
+            enrollId: enroll_id,
+          },
+        });
+        break;
+
+      case "full-course":
+      case "subject-wise":
+        router.push({
+          pathname: "/sidepanel/my_courses/ap_course",
+          params: {
+            id: course_id,
+            enrollId: enroll_id,
+          },
+        });
+        break;
+
+      default:
+        Toast.show({
+          type: "error",
+          text1: "Unsupported course type",
+          text2: `Can't open course type "${enroll_type}".`,
+        });
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -357,13 +357,13 @@ export default function MyCourse() {
                     <Text style={styles.percentText}>
                       {percent}% Completed
                     </Text>
-<TouchableOpacity
-  style={styles.continueButton}
-  activeOpacity={0.85}
-  onPress={() => handleContinueCourse(enrollment)}
->
-  <Text style={styles.continueText}>Continue</Text>
-</TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.continueButton}
+                      activeOpacity={0.85}
+                      onPress={() => handleContinueCourse(enrollment)}
+                    >
+                      <Text style={styles.continueText}>Continue</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               </View>
@@ -371,7 +371,7 @@ export default function MyCourse() {
           })
         )}
 
-       
+
       </ScrollView>
     </View>
   );

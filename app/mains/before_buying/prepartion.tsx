@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     overflow: "hidden",
   },
-  previewImage: { ...StyleSheet.absoluteFillObject },
+  previewImage: { ...StyleSheet.absoluteFill },
   previewHeader: {
     height: 8,
     width: "40%",

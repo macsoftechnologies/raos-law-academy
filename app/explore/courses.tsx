@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,11 +6,14 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCartWishlist } from "@/src/context/CartWishlistContext";
+import { getImageUrl, FALLBACK_COURSE_IMAGE, apiClient } from "@/src/api/client";
+import { parseApiError } from "@/src/api/errorHandler";
 
 interface Category {
   _id: string;
@@ -30,108 +33,198 @@ interface SubCategory {
   title: string;
   about_course: string;
   terms_conditions: string;
-  categoryId: Category[];
+  categoryId: Category[] | string;
   createdAt: string;
   updatedAt: string;
   __v: number;
 }
 
-interface SubCategoriesResponse {
-  statusCode: number;
-  message: string;
-  totalCount: number;
-  currentPage: number;
-  totalPages: number;
-  limit: number;
-  data: SubCategory[];
-}
-
-const IMAGE_BASE_URL = "https://api.raoslawacademy.com/uploads/subcategories/";
-
 export default function Courses() {
   const { sub_categoryId } = useLocalSearchParams<{ sub_categoryId: string }>();
 
-  console.log("received subcategory id: " + sub_categoryId);
-  
+  const {
+    cartCount,
+    isInWishlist,
+    addToWishlist,
+    removeFromWishlist,
+  } = useCartWishlist();
 
   const [courselist, setCourselist] = useState<SubCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+
+  const fetchSubcategories = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      let response;
+      if (sub_categoryId && sub_categoryId.trim()) {
+        response = await apiClient.post(
+          "/subcategories/getbycategory",
+          { categoryId: sub_categoryId }
+        );
+      } else {
+        response = await apiClient.get(
+          "/subcategories?page=1&limit=10"
+        );
+      }
+
+      if (
+        response.data?.statusCode === 200 ||
+        response.data?.statusCode === 201 ||
+        response.status === 200 ||
+        response.status === 201
+      ) {
+        setCourselist(response.data.data || []);
+      } else {
+        setError(response.data?.message || "Failed to load courses");
+      }
+    } catch (err: any) {
+      console.log("Subcategories API Error:", err?.response?.data || err.message);
+      const parsed = parseApiError(err);
+      setError(parsed.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [sub_categoryId]);
+
+  useEffect(() => {
+    fetchSubcategories();
+  }, [fetchSubcategories]);
 
   const handleBuyNow = (course: SubCategory) => {
-    console.log("Buy:", course.title);
+    router.push({
+      pathname: "/explore/coursepackage",
+      params: {
+        sub_categoryId: course.subcategory_id,
+        subcategoryId: course.subcategory_id,
+        courseId: course.subcategory_id,
+        id: course._id,
+        title: course.title,
+        buyNow: "true",
+      },
+    });
   };
 
   const handleViewDetails = (course: SubCategory) => {
     router.push({
       pathname: "/explore/courseoverview",
-      params: { sub_categoryId: course.subcategory_id },
-    
+      params: {
+        sub_categoryId: course.subcategory_id,
+        subcategoryId: course.subcategory_id,
+        courseId: course.subcategory_id,
+        id: course._id,
+        title: course.title,
+      },
     });
   };
-
- useEffect(() => {
-  const fetchUsercategories = async () => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      const response = await axios.get(
-        "https://api.raoslawacademy.com/categories?page=1&limit=10",
-        { headers: { Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImZpbmRBZG1pbiI6eyJfaWQiOiI2OTZmNGQ4M2Q4OTRhOWY3Y2Y4NTJhMjEiLCJlbWFpbElkIjoiYWRtaW4xQGdtYWlsLmNvbSIsIm1vYmlsZU51bWJlciI6Ijg5MTk1NTY0MDEiLCJwYXNzd29yZCI6IiQyYiQxMCRMeG83aldsRWUva1ZwZFQ0VFFGSk11akw0Z2F2OEpBZmFyTFV1M290QWp3bFc4NXNkcWlwbSIsInJvbGUiOiJ0ZWFjaGVyIiwiYWNjZXNzX21vZHVsZXMiOlsicXVlc3Rpb25fcGFwZXJzIiwicmVzdWx0cyIsInN0dWRlbnRzIl0sImFkbWluSWQiOiJkNDhkOGNjOC0zZWQ3LTRkNGYtYjVmYy03ZjI0MmE4MTBmOGMiLCJjcmVhdGVkQXQiOiIyMDI2LTAxLTIwVDA5OjQwOjE5Ljk0OVoiLCJ1cGRhdGVkQXQiOiIyMDI2LTA5LTE3VDA5OjM1OjA0Ljk5NloiLCJfX3YiOjAsImFjdGl2ZVRva2VuU2Vzc2lvbklkIjoiOGIyMDE2ZTQtZDk4OC00NjA1LThkNDYtZmE5M2IyZTYwZDJmIiwic2Vzc2lvbkV4cGlyZXNBdCI6IjIwMjYtMDktMjRUMDk6MzU6MDQuMDAwWiJ9fSwic2Vzc2lvbklkIjoiMDRjM2Y1Y2ItNTE1YS00MjYxLTg5Y2ItNGU2MjZhMDZiMzcxIiwiaWF0IjoxNzg5NjQyNjU1LCJleHAiOjE3OTAyNDc0NTV9.dfycU6A67d8WoC8tLCXALz5s00qvvpwqn_uQPFmTHMg` } }
-      );
-      if (response.data?.statusCode === 200) {
-        setCourselist(response.data.data);
-      }
-    } catch (error: any) {
-      console.log("Categories API Error:", error?.response?.data || error.message);
-    }
-  };
-  fetchUsercategories();
-}, []);
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={28} color="#000" />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>Junior Civil Judge</Text>
+        <Text style={styles.headerTitle}>Courses</Text>
 
-        <View style={{ width: 28 }} />
+        <TouchableOpacity
+          onPress={() => router.push("/sidepanel/wish_cart/wish_buy")}
+          style={{ position: "relative", padding: 4 }}
+          hitSlop={10}
+        >
+          <Ionicons name="cart-outline" size={26} color="#000" />
+          {cartCount > 0 && (
+            <View style={styles.cartBadge}>
+              <Text style={styles.cartBadgeText}>{cartCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {courselist.map((item) => (
-          <View key={item._id} style={styles.card}>
-            <Image
-              source={
-                item.presentation_image
-                  ? { uri: `https://api.raoslawacademy.com/${item.presentation_image}` }
-                  : require("../../assets/images/Rectangle40.png")
-              }
-              style={styles.image}
-            />
-
-            <View style={styles.content}>
-              <Text style={styles.title}>{item.title}</Text>
-
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={styles.buyButton}
-                  onPress={(() => handleBuyNow(item))}
-                >
-                  <Text style={styles.buyText}>Buy Now</Text>
-                </TouchableOpacity>
-
-              <TouchableOpacity
-  style={styles.detailsButton}
-  onPress={() => router.push("/explore/courseoverview")}
->
-  <Text style={styles.detailsText}>View Details</Text>
-</TouchableOpacity>
-              </View>
-            </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        {loading ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color="#23408E" />
+            <Text style={styles.statusText}>Loading courses...</Text>
           </View>
-        ))}
+        ) : error ? (
+          <View style={styles.centerContainer}>
+            <Ionicons name="alert-circle-outline" size={44} color="#E53935" />
+            <Text style={[styles.statusText, { color: "#E53935", textAlign: "center" }]}>
+              {error}
+            </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchSubcategories}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : courselist.length === 0 ? (
+          <View style={styles.centerContainer}>
+            <Ionicons name="folder-open-outline" size={44} color="#888" />
+            <Text style={styles.statusText}>No courses available in this category.</Text>
+          </View>
+        ) : (
+          courselist.map((item) => {
+            const courseId = item.subcategory_id || item._id;
+            const isWishlisted = isInWishlist(courseId);
+            const imgUri = getImageUrl(item.presentation_image);
+            const isImgError = !imgUri || imageErrors[item._id];
+            return (
+              <View key={item._id} style={styles.card}>
+                <View style={{ position: "relative" }}>
+                  <Image
+                    source={isImgError ? FALLBACK_COURSE_IMAGE : { uri: imgUri }}
+                    onError={() =>
+                      setImageErrors((prev) => ({ ...prev, [item._id]: true }))
+                    }
+                    defaultSource={FALLBACK_COURSE_IMAGE}
+                    style={styles.image}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.heartButton}
+                    onPress={async () => {
+                      if (isWishlisted) {
+                        await removeFromWishlist(courseId);
+                      } else {
+                        await addToWishlist(courseId, "prelimes");
+                      }
+                    }}
+                    hitSlop={10}
+                  >
+                    <Ionicons
+                      name={isWishlisted ? "heart" : "heart-outline"}
+                      size={22}
+                      color={isWishlisted ? "#E53935" : "#111"}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.content}>
+                  <Text style={styles.title}>{item.title}</Text>
+
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity
+                      style={styles.buyButton}
+                      onPress={() => handleBuyNow(item)}
+                    >
+                      <Text style={styles.buyText}>Buy Now</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.detailsButton}
+                      onPress={() => handleViewDetails(item)}
+                    >
+                      <Text style={styles.detailsText}>View Details</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -153,7 +246,7 @@ const styles = StyleSheet.create({
   },
 
   headerTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
     color: "#111",
   },
@@ -180,67 +273,104 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    padding: 16,
+    padding: 14,
   },
 
   title: {
     fontSize: 18,
     fontWeight: "700",
     color: "#111",
-    marginBottom: 10,
-  },
-
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 18,
-  },
-
-  price: {
-    fontSize: 25,
-    color: "#23439C",
-    fontWeight: "bold",
-  },
-
-  oldPrice: {
-    marginLeft: 10,
-    fontSize: 18,
-    color: "#666",
-    textDecorationLine: "line-through",
+    marginBottom: 14,
   },
 
   buttonRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    gap: 12,
   },
 
   buyButton: {
     flex: 1,
-    backgroundColor: "#C9D8FB",
-    paddingVertical: 15,
-    borderRadius: 10,
+    backgroundColor: "#23408E",
+    paddingVertical: 12,
+    borderRadius: 8,
     alignItems: "center",
-    marginRight: 8,
+  },
+
+  buyText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
   },
 
   detailsButton: {
     flex: 1,
-    backgroundColor: "#23439C",
-    paddingVertical: 15,
-    borderRadius: 10,
+    backgroundColor: "#E8EDFF",
+    paddingVertical: 12,
+    borderRadius: 8,
     alignItems: "center",
-    marginLeft: 8,
-  },
-
-  buyText: {
-    color: "#23439C",
-    fontSize: 17,
-    fontWeight: "700",
   },
 
   detailsText: {
-    color: "#fff",
-    fontSize: 16,
+    color: "#23408E",
+    fontSize: 15,
     fontWeight: "700",
+  },
+
+  centerContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+
+  statusText: {
+    fontSize: 15,
+    color: "#666",
+    marginTop: 12,
+  },
+
+  retryButton: {
+    marginTop: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    backgroundColor: "#23408E",
+    borderRadius: 8,
+  },
+
+  retryButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+
+  cartBadge: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    backgroundColor: "#E53935",
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 3,
+  },
+
+  cartBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  heartButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
 });

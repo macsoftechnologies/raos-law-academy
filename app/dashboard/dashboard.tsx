@@ -1,4 +1,4 @@
-import React, { useCallback ,useRef, useState, useEffect } from "react";
+import React, { useCallback, useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,12 +14,16 @@ import {
   SafeAreaView,
   BackHandler,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 
 import { Ionicons, Feather, MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCartWishlist } from "@/src/context/CartWishlistContext";
+import { getImageUrl, FALLBACK_COURSE_IMAGE, apiClient } from "@/src/api/client";
+import { parseApiError } from "@/src/api/errorHandler";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.75;
@@ -35,20 +39,75 @@ interface Category {
   _id: string;
   categoryId: string;
   category_name: string;
-  tag_text: string;
-  presentation_file: string;
+  tag_text?: string;
+  presentation_file?: string;
+  presentation_image?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  __v?: number;
 }
 
-interface Subject {
+export interface CategoriesApiResponse {
+  statusCode: number;
+  message: string;
+  totalCount?: number;
+  currentPage?: number;
+  totalPages?: number;
+  limit?: number;
+  data: Category[];
+}
+
+export interface SubjectLaw {
+  _id?: string;
+  lawId?: string;
+  title?: string;
+  law_image?: string;
+  subcategory_id?: string;
+  categoryId?: string;
+}
+
+export interface SubjectSubcategory {
+  _id?: string;
+  subcategory_id?: string;
+  presentation_image?: string;
+  title?: string;
+  about_course?: string;
+  terms_conditions?: string;
+  categoryId?: string;
+}
+
+export interface SubjectCategory {
+  _id?: string;
+  categoryId?: string;
+  category_name?: string;
+  tag_text?: string;
+  presentation_file?: string;
+}
+
+export interface Subject {
   _id: string;
   subjectId: string;
   title: string;
-  subject_image: string;
-  law_id: { title: string; law_image: string }[];
-  subcategory_id: { title: string; presentation_image: string }[];
-  categoryId: { category_name: string; presentation_file: string }[];
+  subject_image?: string;
+  law_id?: SubjectLaw[];
+  subcategory_id?: SubjectSubcategory[];
+  categoryId?: SubjectCategory[];
+  createdAt?: string;
+  updatedAt?: string;
+  __v?: number;
 }
-    export interface ComboPlan {
+
+export interface SubjectsApiResponse {
+  statusCode: number;
+  message: string | any;
+  totalCount?: number;
+  currentPage?: number;
+  totalPages?: number;
+  limit?: number;
+  data: Subject[];
+}
+
+export interface ComboPlan {
   _id: string;
   planId: string;
   original_price: string;
@@ -99,25 +158,39 @@ const BANNER_IMAGE_BASE_URL = "https://api.raoslawacademy.com/uploads/banners/";
 
 export default function Dashboard() {
 
-  
-   
+
+
 
   const router = useRouter();
   const [menuVisible, setMenuVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
 
-    
+
+  const { cartCount, currentUserId } = useCartWishlist();
   const [banners, setBanners] = useState<Banner[]>([]);
   const [coursecategories, setcategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [subjectlist, setsubjectlist] = useState<Subject[]>([]);
-  const [combolist, setcombolist]=useState<Combo[]>([]);
- 
-  const getCategoryStyle = (name: string) => {
+  const [subjectsLoading, setSubjectsLoading] = useState(true);
+  const [subjectsError, setSubjectsError] = useState<string | null>(null);
+  const [subjectImageErrors, setSubjectImageErrors] = useState<Record<string, boolean>>({});
+  const [combolist, setcombolist] = useState<Combo[]>([]);
+  const [categoryImageErrors, setCategoryImageErrors] = useState<Record<string, boolean>>({});
+  const isFetchingCategoriesRef = useRef(false);
+  const categoriesFetchedRef = useRef(false);
+  const isFetchingSubjectsRef = useRef(false);
+  const subjectsFetchedRef = useRef(false);
+
+  const getCategoryStyle = (name?: string) => {
+    if (!name || typeof name !== "string") {
+      return { color: "#0A1A3B", text: "#fff" };
+    }
     if (name.includes("Junior Civil Judge")) return { color: "#23408E", text: "#fff" };
     if (name.includes("Direct District Judge")) return { color: "#C9A227", text: "#0A1A3B" };
     if (name.toLowerCase().includes("guest")) return { color: "#7A1F2B", text: "#fff" };
-    return { color: "#0A1A3B", text: "#4e3838" }; // fallback, e.g. testadmin/APP
+    return { color: "#0A1A3B", text: "#fff" };
   };
 
   const openMenu = () => {
@@ -163,13 +236,13 @@ export default function Dashboard() {
 
 
 
- const bottomTabs = [
-  { label: "Home", icon: "home", type: "Ionicons", route: "/dashboard/dashboard" },
-  { label: "Notes", icon: "note-edit-outline", type: "MaterialCommunityIcons", route: "/notes_module/notes_way"},
-  { label: "Prelims", icon: "clipboard-text-outline", type: "MaterialCommunityIcons", route: "/prelims/button_prelims" },
-  { label: "Mains", icon: "book-open-variant", type: "MaterialCommunityIcons", route: "/mains/before_buying/mains_pre" },
-  { label: "Chat", icon: "chatbubble-outline", type: "Ionicons", route: "/chat" },
-];
+  const bottomTabs = [
+    { label: "Home", icon: "home", type: "Ionicons", route: "/dashboard/dashboard" },
+    { label: "Notes", icon: "note-edit-outline", type: "MaterialCommunityIcons", route: "/notes_module/notes_way" },
+    { label: "Prelims", icon: "clipboard-text-outline", type: "MaterialCommunityIcons", route: "/prelims/button_prelims" },
+    { label: "Mains", icon: "book-open-variant", type: "MaterialCommunityIcons", route: "/mains/before_buying/mains_pre" },
+    { label: "Chat", icon: "chatbubble-outline", type: "Ionicons", route: "/chat" },
+  ];
 
   const drawerItems = [
     { icon: "user", label: "Profile", route: "/sidepanel/profile/main_profile" },
@@ -181,8 +254,8 @@ export default function Dashboard() {
     { icon: "shopping-cart", label: "My Cart", route: "/sidepanel/wish_cart/wish_buy" },
     { icon: "help-circle", label: "FAQs", route: "/sidepanel/help_center/help_issue" },
     { icon: "moon", label: "Dark Mode", route: "", isToggle: true },
-    { icon: "help-circle", label: "Help Center", route: "/sidepanel/help_center/help" },  
-    { icon: "gift", label: "Refer & Earn", route: "/sidepanel/refer/refer_earn" },
+    { icon: "help-circle", label: "Help Center", route: "/sidepanel/help_center/help" },
+    { icon: "gift", label: "Refer & Earn", route: "/sidepanel/referal/refer" },
     { icon: "file-text", label: "Terms & Conditions", route: "/sidepanel/legal/terms_conditions" },
     { icon: "shield", label: "Privacy Policy", route: "/sidepanel/legal/privacy_policy" },
     { icon: "log-out", label: "Logout", route: "/onboardings/login" },
@@ -198,7 +271,7 @@ export default function Dashboard() {
   };
 
 
- const handleTabPress = (tab: any) => {
+  const handleTabPress = (tab: any) => {
     setActiveTab(tab.label);
     if (tab.params) {
       router.push({ pathname: tab.route, params: tab.params });
@@ -216,56 +289,194 @@ export default function Dashboard() {
   };
 
 
- 
+
 
   useEffect(() => {
     const fetchUserBanners = async () => {
       try {
-        const response = await axios.get("https://api.raoslawacademy.com/banners");
-        if (response.data?.statusCode === 200) {
-          setBanners(response.data.data);
+        const response = await apiClient.get("/banners?page=1&limit=10");
+        if (
+          response.data?.statusCode === 200 ||
+          response.data?.statusCode === 201 ||
+          response.status === 200
+        ) {
+          setBanners(response.data.data || []);
         }
       } catch (error: any) {
-        console.log("User API Error:", error?.response?.data || error.message);
+        console.log("User Banners API Error:", error?.response?.data || error.message);
       }
     };
     fetchUserBanners();
+  }, []);
 
+  const fetchUsercategories = useCallback(async (isRetry = false) => {
+    // Prevent duplicate in-flight requests
+    if (isFetchingCategoriesRef.current) {
+      return;
+    }
+    isFetchingCategoriesRef.current = true;
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+
+    try {
+      const response = await apiClient.get<CategoriesApiResponse>(
+        "/categories?page=1&limit=10"
+      );
+
+      const resData = response.data;
+      const isHttpSuccess = response.status === 200 || response.status === 201;
+      const isPayloadSuccess =
+        resData?.statusCode === undefined ||
+        resData?.statusCode === 200 ||
+        resData?.statusCode === 201;
+
+      if (isHttpSuccess && isPayloadSuccess) {
+        // Resolve categories array safely
+        let categoriesArray: Category[] | null = null;
+        if (Array.isArray(resData?.data)) {
+          categoriesArray = resData.data;
+        } else if (Array.isArray(resData)) {
+          categoriesArray = resData;
+        }
+
+        if (categoriesArray !== null) {
+          setcategories(categoriesArray);
+          setCategoriesError(null);
+          categoriesFetchedRef.current = true;
+        } else {
+          // Unexpected payload structure (missing data array)
+          console.warn(
+            "[Categories API] Unexpected response format (missing data array):",
+            resData
+          );
+          setcategories([]);
+          setCategoriesError(
+            resData?.message || "Invalid categories data received from server."
+          );
+        }
+      } else {
+        // Payload or HTTP status indicated failure
+        const errMsg =
+          resData?.message ||
+          (typeof (resData as any)?.error === "string" ? (resData as any).error : null) ||
+          "Failed to load categories";
+        console.warn("[Categories API] Unsuccessful response:", resData);
+        setcategories([]);
+        setCategoriesError(errMsg);
+      }
+    } catch (error: any) {
+      console.log("Categories API Error:", error?.response?.data || error.message);
+      const parsed = parseApiError(error);
+      setcategories([]);
+      setCategoriesError(parsed.message || "Failed to load categories. Please try again.");
+    } finally {
+      isFetchingCategoriesRef.current = false;
+      setCategoriesLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    const fetchUsercategories = async () => {
-      try {
-        const response = await axios.get("https://api.raoslawacademy.com/categories?page=1");
-        if (response.data?.statusCode === 200) {
-          setcategories(response.data.data);
-        }
-      } catch (error: any) {
-        console.log("User API Error:", error?.response?.data || error.message);
-      }
-    };
     fetchUsercategories();
+  }, [fetchUsercategories]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Only re-fetch if not previously loaded and not currently in progress
+      if (!categoriesFetchedRef.current && !categoriesLoading && !isFetchingCategoriesRef.current) {
+        fetchUsercategories();
+      }
+    }, [categoriesLoading, fetchUsercategories])
+  );
+
+  const fetchUsersubjectlist = useCallback(async () => {
+    if (isFetchingSubjectsRef.current) {
+      return;
+    }
+    isFetchingSubjectsRef.current = true;
+    setSubjectsLoading(true);
+    setSubjectsError(null);
+
+    try {
+      const response = await apiClient.get<SubjectsApiResponse>(
+        "/subjects?page=1&limit=10"
+      );
+
+      const resData = response.data;
+      const isHttpSuccess = response.status === 200 || response.status === 201;
+      const isPayloadSuccess =
+        resData?.statusCode === undefined ||
+        resData?.statusCode === 200 ||
+        resData?.statusCode === 201;
+
+      if (isHttpSuccess && isPayloadSuccess) {
+        let subjectsArray: Subject[] | null = null;
+        if (Array.isArray(resData?.data)) {
+          subjectsArray = resData.data;
+        } else if (Array.isArray(resData)) {
+          subjectsArray = resData;
+        }
+
+        if (subjectsArray !== null) {
+          setsubjectlist(subjectsArray);
+          setSubjectsError(null);
+          subjectsFetchedRef.current = true;
+        } else {
+          console.warn(
+            "[Subjects API] Unexpected response format (missing data array):",
+            resData
+          );
+          setsubjectlist([]);
+          setSubjectsError(
+            typeof resData?.message === "string"
+              ? resData.message
+              : "Invalid subjects data received from server."
+          );
+        }
+      } else {
+        let errMsg = "Failed to load subjects";
+        if (typeof resData?.message === "string" && resData.message.trim()) {
+          errMsg = resData.message;
+        } else if (typeof (resData as any)?.error === "string") {
+          errMsg = (resData as any).error;
+        } else if (resData?.message && typeof resData.message === "object") {
+          errMsg =
+            (resData.message as any)?.errorResponse?.errmsg ||
+            (resData.message as any)?.errmsg ||
+            "Server returned an error.";
+        }
+
+        console.warn("[Subjects API] Unsuccessful response:", resData);
+        setsubjectlist([]);
+        setSubjectsError(errMsg);
+      }
+    } catch (error: any) {
+      console.log("Subjects API Error:", error?.response?.data || error.message);
+      const parsed = parseApiError(error);
+      setsubjectlist([]);
+      setSubjectsError(parsed.message || "Failed to load subjects. Please try again.");
+    } finally {
+      isFetchingSubjectsRef.current = false;
+      setSubjectsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    const fetchUsersubjectlist = async () => {
-      try {
-        const response = await axios.get("https://api.raoslawacademy.com/subjects");
-        if (response.data?.statusCode === 200) {
-          setsubjectlist(response.data.data);
-        }
-      } catch (error: any) {
-        console.log("User API Error:", error?.response?.data || error.message);
-      }
-    };
     fetchUsersubjectlist();
-  }, []);
+  }, [fetchUsersubjectlist]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!subjectsFetchedRef.current && !subjectsLoading && !isFetchingSubjectsRef.current) {
+        fetchUsersubjectlist();
+      }
+    }, [subjectsLoading, fetchUsersubjectlist])
+  );
 
 
 
 
 
- useEffect(() => {
+  useEffect(() => {
     const fetchUsercombolist = async () => {
       try {
         const response = await axios.get("https://api.raoslawacademy.com/combos/user/list");
@@ -294,7 +505,7 @@ export default function Dashboard() {
     }
   };
 
-useFocusEffect(
+  useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
         Alert.alert('Exit App', 'Are you sure you want to exit?', [
@@ -334,10 +545,37 @@ useFocusEffect(
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={()=>{}}
+            onPress={handlenavigateToNotifications}
             style={{ marginLeft: 15 }}
           >
             <Ionicons name="notifications-outline" size={25} color="#333" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push("/sidepanel/wish_cart/wish_buy")}
+            style={{ marginLeft: 15, position: "relative" }}
+          >
+            <Ionicons name="cart-outline" size={25} color="#333" />
+            {cartCount > 0 && (
+              <View
+                style={{
+                  position: "absolute",
+                  top: -4,
+                  right: -6,
+                  backgroundColor: "#E53935",
+                  borderRadius: 9,
+                  minWidth: 16,
+                  height: 16,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  paddingHorizontal: 2,
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>
+                  {cartCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -352,18 +590,22 @@ useFocusEffect(
           pagingEnabled
           showsHorizontalScrollIndicator={false}
         >
-          {banners.map((item) => (
-            <TouchableOpacity
-              key={item._id}
-              activeOpacity={0.9}
-              onPress={() => handleBannerPress(item.redirect_link)}
-            >
-              <Image
-                source={{ uri: `https://api.raoslawacademy.com/${item.banner_file}` }}
-                style={styles.banner}
-              />
-            </TouchableOpacity>
-          ))}
+          {banners.map((item) => {
+            const bannerUri = getImageUrl(item.banner_file);
+            return (
+              <TouchableOpacity
+                key={item._id}
+                activeOpacity={0.9}
+                onPress={() => handleBannerPress(item.redirect_link)}
+              >
+                <Image
+                  source={bannerUri ? { uri: bannerUri } : FALLBACK_COURSE_IMAGE}
+                  defaultSource={FALLBACK_COURSE_IMAGE}
+                  style={styles.banner}
+                />
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         {/* Dots */}
@@ -378,100 +620,196 @@ useFocusEffect(
         {/* Categories */}
         <Text style={styles.heading}>Categories</Text>
         <View style={styles.whiteCard}>
-          {coursecategories.map((item) => {
-            const { color, text } = getCategoryStyle(item.category_name);
-            return (
-              <View key={item._id} style={styles.courseCard}>
-                <Image
-                  source={{ uri: `https://api.raoslawacademy.com/${item.presentation_file}` }}
-                  style={styles.courseImage}
-                />
+          {categoriesLoading ? (
+            <View style={{ padding: 24, alignItems: "center" }}>
+              <ActivityIndicator size="small" color="#23408E" />
+              <Text style={{ marginTop: 8, color: "#666", fontSize: 13 }}>
+                Loading categories...
+              </Text>
+            </View>
+          ) : categoriesError ? (
+            <View style={{ padding: 20, alignItems: "center" }}>
+              <Text style={{ color: "#E53935", fontSize: 13, marginBottom: 8, textAlign: "center" }}>
+                {categoriesError}
+              </Text>
+              <TouchableOpacity
+                onPress={() => fetchUsercategories(true)}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 6,
+                  backgroundColor: "#23408E",
+                  borderRadius: 6,
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : coursecategories.length === 0 ? (
+            <View style={{ padding: 20, alignItems: "center" }}>
+              <Text style={{ color: "#666", fontSize: 13 }}>No categories available</Text>
+            </View>
+          ) : (
+            coursecategories.map((item, index) => {
+              const categoryTitle = item.category_name || "Category";
+              const { color, text } = getCategoryStyle(categoryTitle);
+              const rawImage = item.presentation_file || item.presentation_image || "";
+              const imgUri = getImageUrl(rawImage);
+              const cardKey = item.categoryId || item._id || `category-${index}`;
+              const isImgError = !imgUri || categoryImageErrors[cardKey];
+              return (
+                <View key={cardKey} style={styles.courseCard}>
+                  <Image
+                    source={isImgError ? FALLBACK_COURSE_IMAGE : { uri: imgUri }}
+                    onError={() =>
+                      setCategoryImageErrors((prev) => ({ ...prev, [cardKey]: true }))
+                    }
+                    defaultSource={FALLBACK_COURSE_IMAGE}
+                    style={styles.courseImage}
+                  />
 
-                <View style={{ flex: 1, marginLeft: 15 }}>
-                  <Text style={styles.courseTitle}>{item.category_name}</Text>
-                  <Text style={styles.courseSub}>{item.tag_text}</Text>
+                  <View style={{ flex: 1, marginLeft: 15 }}>
+                    <Text style={styles.courseTitle}>{categoryTitle}</Text>
+                    {item.tag_text ? (
+                      <Text style={styles.courseSub}>{item.tag_text}</Text>
+                    ) : null}
 
-                  <TouchableOpacity
-                    style={[styles.button, { backgroundColor: color }]}
-                    onPress={() => {
-                  
+                    <TouchableOpacity
+                      style={[styles.button, { backgroundColor: color }]}
+                      onPress={() => {
+                        console.log("Navigating to courses with categoryId:", item.categoryId);
                         router.push({
                           pathname: "/explore/courses",
                           params: {
-                            sub_categoryId:item.categoryId??
-                            "" ,
+                            sub_categoryId: item.categoryId ?? "",
                           },
                         });
-                 console.log(item.categoryId  +"recived cated");
-                    }}
-
-                  
-                    
-                  >
-                    <Text style={[styles.buttonText, { color: text }]}>Explore Now</Text>
-                  </TouchableOpacity>
+                      }}
+                    >
+                      <Text style={[styles.buttonText, { color: text }]}>Explore Now</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            );
-          })}
+              );
+            })
+          )}
         </View>
 
         {/* Subject List */}
         <Text style={styles.heading}>Subject List</Text>
         <View style={styles.whiteCard}>
-          {subjectlist.map((item) => {
-            const categoryName = item.categoryId?.[0]?.category_name ?? "";
-            const imageFile = item.categoryId?.[0]?.presentation_file ?? "";
-            const color = categoryName.includes("Junior Civil Judge")
-              ? "#23408E"
-              : categoryName.includes("Direct District Judge")
-              ? "#C9A227"
-              : "#0A1A3B";
+          {subjectsLoading ? (
+            <View style={{ padding: 24, alignItems: "center" }}>
+              <ActivityIndicator size="small" color="#23408E" />
+              <Text style={{ marginTop: 8, color: "#666", fontSize: 13 }}>
+                Loading subjects...
+              </Text>
+            </View>
+          ) : subjectsError ? (
+            <View style={{ padding: 20, alignItems: "center" }}>
+              <Text
+                style={{
+                  color: "#E53935",
+                  fontSize: 13,
+                  marginBottom: 8,
+                  textAlign: "center",
+                }}
+              >
+                {subjectsError}
+              </Text>
+              <TouchableOpacity
+                onPress={fetchUsersubjectlist}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 6,
+                  backgroundColor: "#23408E",
+                  borderRadius: 6,
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>
+                  Retry
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : subjectlist.length === 0 ? (
+            <View style={{ padding: 20, alignItems: "center" }}>
+              <Text style={{ color: "#666", fontSize: 13 }}>
+                No subjects available
+              </Text>
+            </View>
+          ) : (
+            subjectlist.map((item, index) => {
+              const categoryName = item.categoryId?.[0]?.category_name ?? "";
+              const subTitle =
+                item.subcategory_id?.[0]?.title ??
+                item.law_id?.[0]?.title ??
+                categoryName;
+              const imageFile =
+                item.subject_image ||
+                item.categoryId?.[0]?.presentation_file ||
+                item.subcategory_id?.[0]?.presentation_image ||
+                item.law_id?.[0]?.law_image ||
+                "";
+              const imgUri = getImageUrl(imageFile);
+              const cardKey = item._id || item.subjectId || `subject-${index}`;
+              const isImgError = !imgUri || subjectImageErrors[cardKey];
+              const color = categoryName.includes("Junior Civil Judge")
+                ? "#23408E"
+                : categoryName.includes("Direct District Judge")
+                  ? "#C9A227"
+                  : "#0A1A3B";
 
-            return (
-              <View key={item._id} style={styles.courseCard}>
-                <Image
-                  source={{ uri: `https://api.raoslawacademy.com/${imageFile}` }}
-                  style={styles.courseImage}
-                />
+              return (
+                <View key={cardKey} style={styles.courseCard}>
+                  <Image
+                    source={isImgError ? FALLBACK_COURSE_IMAGE : { uri: imgUri }}
+                    onError={() =>
+                      setSubjectImageErrors((prev) => ({ ...prev, [cardKey]: true }))
+                    }
+                    defaultSource={FALLBACK_COURSE_IMAGE}
+                    style={styles.courseImage}
+                  />
 
-                <View style={{ flex: 1, marginLeft: 15 }}>
-                  <Text style={styles.courseTitle}>{item.title}</Text>
-                  <Text style={styles.courseSub}>{item.subcategory_id?.[0]?.title ?? ""}</Text>
-                  <TouchableOpacity
-                    style={[styles.button, { backgroundColor: color }]}
-                    onPress={() => {
-                      if (
-                        categoryName.includes("Junior Civil Judge") ||
-                        categoryName.includes("Direct District Judge")
-                      ) {
-                        router.push({ pathname: "/subjectlist/details", params: { subjectId: item._id} });
-                      }
-                    }}
-                  >
-                    <Text style={styles.buttonText}>View All</Text>
-                  </TouchableOpacity>
+                  <View style={{ flex: 1, marginLeft: 15 }}>
+                    <Text style={styles.courseTitle}>{item.title || "Subject"}</Text>
+                    {subTitle ? (
+                      <Text style={styles.courseSub}>{subTitle}</Text>
+                    ) : null}
+                    <TouchableOpacity
+                      style={[styles.button, { backgroundColor: color }]}
+                      onPress={() => {
+                        router.push({
+                          pathname: "/subjectlist/details",
+                          params: {
+                            subjectId: item._id,
+                            userId: currentUserId || undefined,
+                          },
+                        });
+                      }}
+                    >
+                      <Text style={styles.buttonText}>View All</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            );
-          })}
+              );
+            })
+          )}
         </View>
 
         {/* Combo Courses */}
         <Text style={styles.heading}>Combo Courses</Text>
-       <ScrollView
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  style={{ marginBottom: 25 }}
-  contentContainerStyle={{ paddingHorizontal: 20 }}
->
-  {combolist.map((item) => {
-    const plan = item.availablePlans?.[0];
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginBottom: 25 }}
+          contentContainerStyle={{ paddingHorizontal: 20 }}
+        >
+          {combolist.map((item) => {
+            const plan = item.availablePlans?.[0];
 
-    return (
-      <View key={item._id} style={styles.comboCard}>
-        <View style={styles.comboImageWrap}>
-          {/* <Image
+            return (
+              <View key={item._id} style={styles.comboCard}>
+                <View style={styles.comboImageWrap}>
+                  {/* <Image
             source={
               item.presentation_image
                 ? { uri: `https://api.raoslawacademy.com//${item.presentation_image}` }
@@ -479,52 +817,51 @@ useFocusEffect(
             }
             style={styles.comboImage}
           /> */}
-          <TouchableOpacity style={styles.bookmarkIcon}>
-            <Ionicons name="bookmark-outline" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
+                  <TouchableOpacity style={styles.bookmarkIcon}>
+                    <Ionicons name="bookmark-outline" size={18} color="#fff" />
+                  </TouchableOpacity>
+                </View>
 
-        <Text style={styles.comboTag}>
-          {item.isEnrolled ? "Enrolled" : "Combo"}
-        </Text>
+                <Text style={styles.comboTag}>
+                  {item.isEnrolled ? "Enrolled" : "Combo"}
+                </Text>
 
-        <Text style={styles.comboTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
+                <Text style={styles.comboTitle} numberOfLines={2}>
+                  {item.title}
+                </Text>
 
-        <Text style={styles.comboPrice}>
-          {plan
-            ? `₹${plan.strike_price}${
-                plan.original_price !== plan.strike_price
-                  ? `  ₹${plan.original_price}`
-                  : ""
-              }`
-            : "Price unavailable"}
-        </Text>
+                <Text style={styles.comboPrice}>
+                  {plan
+                    ? `₹${plan.strike_price}${plan.original_price !== plan.strike_price
+                      ? `  ₹${plan.original_price}`
+                      : ""
+                    }`
+                    : "Price unavailable"}
+                </Text>
 
-        <View style={styles.comboButtonRow}>
-          <TouchableOpacity
-            style={styles.comboGetButton}
-            // onPress={() => router.push("/combos/civil")}
-          >
-            <Text style={styles.comboGetText}>
-              {item.isEnrolled ? "Continue" : "Get this course"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.comboExploreButton}
-            onPress={() => router.push({
-              pathname: "/combos/civil",
-              params: {  userId: "" }
-            })}
-          >
-            <Text style={styles.comboExploreText}>Explore More</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  })}
-</ScrollView>
+                <View style={styles.comboButtonRow}>
+                  <TouchableOpacity
+                    style={styles.comboGetButton}
+                  // onPress={() => router.push("/combos/civil")}
+                  >
+                    <Text style={styles.comboGetText}>
+                      {item.isEnrolled ? "Continue" : "Get this course"}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.comboExploreButton}
+                    onPress={() => router.push({
+                      pathname: "/combos/civil",
+                      params: { userId: "" }
+                    })}
+                  >
+                    <Text style={styles.comboExploreText}>Explore More</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
       </ScrollView>
 
       {/* Sticky Bottom Navigation */}
@@ -577,14 +914,14 @@ useFocusEffect(
             <View style={styles.drawerHeader}>
               <View style={styles.avatarCircle}>
                 <Text style={styles.avatarText}>
-                 ""
+                  ""
                 </Text>
               </View>
-              <Text style={styles.drawerName}>{ "Varsha"}</Text>
+              <Text style={styles.drawerName}>{"Varsha"}</Text>
               <Text style={styles.drawerSub}>AP JCJ/DDJ Aspirant</Text>
             </View>
 
-           <ScrollView
+            <ScrollView
               style={styles.menuList}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 12 }}

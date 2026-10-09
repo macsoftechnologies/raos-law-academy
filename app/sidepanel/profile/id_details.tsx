@@ -86,7 +86,7 @@ export default function IdDetails() {
 
   useEffect(() => {
     const fetchIdProofs = async () => {
-    
+
 
       setLoading(true);
       setError(null);

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,59 +7,12 @@ import {
   ScrollView,
   Image,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-
-interface CartCourse {
-  id: string;
-  title: string;
-  thumbnail: string;
-  price: number;
-  mrp: number;
-}
-
-interface AddOnCourse {
-  id: string;
-  thumbnail: string;
-  selected: boolean;
-}
-
-const CART_COURSES: CartCourse[] = [
-  {
-    id: "1",
-    title: "Andhra Pradesh JCJ Course",
-    thumbnail: "https://via.placeholder.com/120x100",
-    price: 45000,
-    mrp: 90000,
-  },
-  {
-    id: "2",
-    title: "Telangana JCJ Course",
-    thumbnail: "https://via.placeholder.com/120x100",
-    price: 45000,
-    mrp: 90000,
-  },
-  {
-    id: "3",
-    title: "Telangana JCJ Course",
-    thumbnail: "https://via.placeholder.com/120x100",
-    price: 45000,
-    mrp: 90000,
-  },
-  {
-    id: "4",
-    title: "Combo of JCJ & DDJ",
-    thumbnail: "https://via.placeholder.com/120x100",
-    price: 45000,
-    mrp: 90000,
-  },
-];
-
-const ADD_ON_COURSES: AddOnCourse[] = [
-  { id: "1", thumbnail: "https://via.placeholder.com/60x50", selected: true },
-  { id: "2", thumbnail: "https://via.placeholder.com/60x50", selected: true },
-];
+import { useCartWishlist, CartItem } from "@/src/context/CartWishlistContext";
+import { getImageUrl, FALLBACK_COURSE_IMAGE } from "@/src/api/client";
 
 const TERMS = [
   "Are you sure you want to start the Civil Laws Mains Test?",
@@ -68,22 +21,62 @@ const TERMS = [
   "Once started, the test cannot be paused or restarted.",
 ];
 
-const MRP = 599;
-const PRICE = 499;
-const SHIPPING = 50;
-const TOTAL = 549;
-const GRAND_TOTAL = 90053;
-
 export default function WishBuy() {
   const [activeTab, setActiveTab] = useState<"courses" | "books">("courses");
-  const [cartCourses, setCartCourses] = useState(CART_COURSES);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsExpanded, setTermsExpanded] = useState(false);
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
-  const handleRemove = (id: string) => {
-    setCartCourses((prev) => prev.filter((course) => course.id !== id));
+  const {
+    cartItems,
+    loadingCart,
+    removeFromCart,
+    refreshCart,
+  } = useCartWishlist();
+
+  const formatPrice = (value: number | string | undefined) => {
+    const num = Number(value) || 0;
+    return `₹${num.toLocaleString("en-IN")}`;
   };
 
-  const formatPrice = (value: number) => `₹${value.toLocaleString("en-IN")}`;
+  // Dynamic price calculation from actual plan prices
+  const { totalMrp, totalPrice, totalHandlingFee, grandTotal } = useMemo(() => {
+    let mrp = 0;
+    let price = 0;
+    let handling = 0;
+
+    cartItems.forEach((item) => {
+      const p = Number(item.plan?.original_price) || 0;
+      const strike = Number(item.plan?.strike_price) || p * 1.5;
+      const h = Number(item.plan?.handling_fee) || 53;
+      mrp += strike;
+      price += p;
+      handling += h;
+    });
+
+    if (cartItems.length === 0) {
+      return { totalMrp: 0, totalPrice: 0, totalHandlingFee: 0, grandTotal: 0 };
+    }
+
+    return {
+      totalMrp: mrp,
+      totalPrice: price,
+      totalHandlingFee: handling,
+      grandTotal: price + handling,
+    };
+  }, [cartItems]);
+
+  const handleCheckout = () => {
+    if (!termsAccepted || cartItems.length === 0) return;
+    router.push({
+      pathname: "/paymentgateways/razorpay",
+      params: {
+        price: totalPrice,
+        handlingFee: totalHandlingFee,
+        total: grandTotal,
+      },
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -94,6 +87,7 @@ export default function WishBuy() {
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
+          hitSlop={10}
         >
           <Ionicons name="chevron-back" size={24} color="#0A1A3B" />
         </TouchableOpacity>
@@ -121,184 +115,209 @@ export default function WishBuy() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-  style={[
-    styles.tab,
-    activeTab === "books" ? styles.tabActive : styles.tabInactive,
-  ]}
-  onPress={() => router.push("/sidepanel/wish_cart/wish_acess")}
->
-  <Text
-    style={[
-      styles.tabText,
-      activeTab === "books" 
-        ? styles.tabTextActive
-        : styles.tabTextInactive,
-    ]}
-  >
-    Printed Books
-  </Text>
-</TouchableOpacity>
+          style={[
+            styles.tab,
+            activeTab === "books" ? styles.tabActive : styles.tabInactive,
+          ]}
+          onPress={() => router.push("/sidepanel/wish_cart/wish_acess")}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "books"
+                ? styles.tabTextActive
+                : styles.tabTextInactive,
+            ]}
+          >
+            Printed Books
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Cart Items */}
-        {cartCourses.map((course) => (
-          <View key={course.id} style={styles.cartCard}>
-            <Image
-              source={{ uri: course.thumbnail }}
-              style={styles.cartThumbnail}
-              resizeMode="cover"
-            />
-            <View style={styles.cartCardBody}>
-              <Text style={styles.cartTitle} numberOfLines={2}>
-                {course.title}
-              </Text>
-              <View style={styles.priceRow}>
-                <Text style={styles.priceNow}>{formatPrice(course.price)}</Text>
-                <Text style={styles.priceMrp}>{formatPrice(course.mrp)}</Text>
-              </View>
-              <View style={styles.cartActions}>
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => handleRemove(course.id)}
-                >
-                  <Text style={styles.removeButtonText}>Remove</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.buyNowSmallButton}
-                //   onPress={() => router.push(`/checkout/${course.id}`)}
-                >
-                  <Text style={styles.buyNowSmallText}>Buy Now</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+        {loadingCart ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color="#23408E" />
+            <Text style={styles.statusText}>Loading cart...</Text>
           </View>
-        ))}
-
-        {/* Buy More & Save More */}
-        <Text style={styles.sectionHeading}>Buy More & Save More</Text>
-        <View style={styles.saveMoreCard}>
-          <View style={styles.saveMoreBanner}>
-            <Ionicons name="pricetag" size={16} color="#16A34A" />
-            <Text style={styles.saveMoreBannerText}>
-              Add 1 more course(s) to get extra 5% off
+        ) : cartItems.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="cart-outline" size={72} color="#A0AEC0" />
+            <Text style={styles.emptyTitle}>Your Cart is Empty</Text>
+            <Text style={styles.emptySubtitle}>
+              Explore our comprehensive courses and notes to get started.
             </Text>
-          </View>
-          <View style={styles.addOnRow}>
-            <TouchableOpacity style={styles.addOnAddButton}>
-              <Ionicons name="add-circle-outline" size={20} color="#23408E" />
-              <Text style={styles.addOnAddText}>Add</Text>
+            <TouchableOpacity
+              style={styles.exploreBtn}
+              onPress={() => router.push("/dashboard/dashboard")}
+            >
+              <Text style={styles.exploreBtnText}>Explore Courses</Text>
             </TouchableOpacity>
-            {ADD_ON_COURSES.map((course, index) => (
-              <React.Fragment key={course.id}>
-                <Text style={styles.plusSign}>+</Text>
-                <View style={styles.addOnThumbnailWrap}>
+          </View>
+        ) : (
+          <>
+            {/* Cart Items */}
+            {cartItems.map((item: CartItem) => {
+              const imgUri = getImageUrl(
+                item.courseDetails?.presentation_image ||
+                  (item.courseDetails as any)?.printNotes_image
+              );
+              const isImgError = !imgUri || imageErrors[item.cartItemId];
+              const price = Number(item.plan?.original_price) || 0;
+              const strike = Number(item.plan?.strike_price) || price * 1.5;
+              const title =
+                item.courseDetails?.title ||
+                item.courseDetails?.sub_title ||
+                "Law Academy Course";
+
+              return (
+                <View key={item.cartItemId || item._id} style={styles.cartCard}>
                   <Image
-                    source={{ uri: course.thumbnail }}
-                    style={styles.addOnThumbnail}
+                    source={isImgError ? FALLBACK_COURSE_IMAGE : { uri: imgUri }}
+                    onError={() =>
+                      setImageErrors((prev) => ({
+                        ...prev,
+                        [item.cartItemId]: true,
+                      }))
+                    }
+                    defaultSource={FALLBACK_COURSE_IMAGE}
+                    style={styles.cartThumbnail}
                     resizeMode="cover"
                   />
-                  {course.selected && (
-                    <View style={styles.checkBadge}>
-                      <Ionicons name="checkmark" size={10} color="#FFFFFF" />
+                  <View style={styles.cartCardBody}>
+                    <Text style={styles.cartTitle} numberOfLines={2}>
+                      {title}
+                    </Text>
+                    {item.plan?.duration && (
+                      <Text style={styles.durationBadgeText}>
+                        Plan: {item.plan.duration}
+                      </Text>
+                    )}
+                    <View style={styles.priceRow}>
+                      <Text style={styles.priceNow}>{formatPrice(price)}</Text>
+                      {strike > price && (
+                        <Text style={styles.priceMrp}>{formatPrice(strike)}</Text>
+                      )}
                     </View>
-                  )}
+                    <View style={styles.cartActions}>
+                      <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={() => removeFromCart(item.cartItemId)}
+                      >
+                        <Text style={styles.removeButtonText}>Remove</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.buyNowSmallButton}
+                        onPress={() => {
+                          router.push({
+                            pathname: "/paymentgateways/razorpay",
+                            params: {
+                              price: price,
+                              handlingFee: Number(item.plan?.handling_fee) || 53,
+                              total: price + (Number(item.plan?.handling_fee) || 53),
+                            },
+                          });
+                        }}
+                      >
+                        <Text style={styles.buyNowSmallText}>Buy Now</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
-              </React.Fragment>
-            ))}
-          </View>
-        </View>
+              );
+            })}
 
-        {/* Price Details */}
-        <View style={styles.priceDetailsCard}>
-          <Text style={styles.priceDetailsHeading}>Price Details</Text>
-          <View style={styles.priceDetailsRow}>
-            <Text style={styles.priceDetailsLabel}>MRP</Text>
-            <Text style={styles.priceDetailsStrike}>{formatPrice(MRP)}</Text>
-          </View>
-          <View style={styles.priceDetailsRow}>
-            <Text style={styles.priceDetailsLabel}>Price</Text>
-            <Text style={styles.priceDetailsValue}>{formatPrice(PRICE)}</Text>
-          </View>
-          <View style={styles.priceDetailsRow}>
-            <Text style={styles.priceDetailsLabel}>Shipping Price</Text>
-            <Text style={styles.priceDetailsValue}>
-              {formatPrice(SHIPPING)}
-            </Text>
-          </View>
-          <View style={styles.priceDetailsRow}>
-            <Text style={styles.priceDetailsLabelBold}>Total Price</Text>
-            <Text style={styles.priceDetailsValueBold}>
-              {formatPrice(TOTAL)}
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.couponButton}>
-            <Text style={styles.couponButtonText}>Apply Coupon</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Terms & Conditions */}
-        <TouchableOpacity
-          style={styles.termsRow}
-          onPress={() => setTermsAccepted((prev) => !prev)}
-          activeOpacity={0.7}
-        >
-          <View
-            style={[
-              styles.checkbox,
-              termsAccepted && styles.checkboxChecked,
-            ]}
-          >
-            {termsAccepted && (
-              <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-            )}
-          </View>
-          <Text style={styles.termsText}>I accept Terms & Conditions</Text>
-          <Ionicons
-            name={termsAccepted ? "chevron-up" : "chevron-down"}
-            size={18}
-            color="#7A1F2B"
-            style={styles.termsChevron}
-          />
-        </TouchableOpacity>
-
-        {termsAccepted && (
-          <View style={styles.termsList}>
-            {TERMS.map((term, index) => (
-              <View key={index} style={styles.termsItem}>
-                <Text style={styles.termsItemNumber}>{index + 1}.</Text>
-                <Text style={styles.termsItemText}>{term}</Text>
+            {/* Price Details */}
+            <View style={styles.priceDetailsCard}>
+              <Text style={styles.priceDetailsHeading}>Price Details</Text>
+              <View style={styles.priceDetailsRow}>
+                <Text style={styles.priceDetailsLabel}>MRP</Text>
+                <Text style={styles.priceDetailsStrike}>
+                  {formatPrice(totalMrp)}
+                </Text>
               </View>
-            ))}
-          </View>
+              <View style={styles.priceDetailsRow}>
+                <Text style={styles.priceDetailsLabel}>Price</Text>
+                <Text style={styles.priceDetailsValue}>
+                  {formatPrice(totalPrice)}
+                </Text>
+              </View>
+              <View style={styles.priceDetailsRow}>
+                <Text style={styles.priceDetailsLabel}>Internet Handling Fee</Text>
+                <Text style={styles.priceDetailsValue}>
+                  {formatPrice(totalHandlingFee)}
+                </Text>
+              </View>
+              <View style={[styles.priceDetailsRow, styles.totalRow]}>
+                <Text style={styles.priceDetailsLabelBold}>Total Price</Text>
+                <Text style={styles.priceDetailsValueBold}>
+                  {formatPrice(grandTotal)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Terms & Conditions */}
+            <TouchableOpacity
+              style={styles.termsRow}
+              onPress={() => setTermsAccepted((prev) => !prev)}
+              activeOpacity={0.7}
+            >
+              <View
+                style={[
+                  styles.checkbox,
+                  termsAccepted && styles.checkboxChecked,
+                ]}
+              >
+                {termsAccepted && (
+                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                )}
+              </View>
+              <Text style={styles.termsLabel}>
+                I accept the Terms & Conditions
+              </Text>
+              <TouchableOpacity
+                onPress={() => setTermsExpanded((prev) => !prev)}
+                hitSlop={8}
+                style={{ marginLeft: "auto" }}
+              >
+                <Ionicons
+                  name={termsExpanded ? "chevron-up" : "chevron-down"}
+                  size={18}
+                  color="#23408E"
+                />
+              </TouchableOpacity>
+            </TouchableOpacity>
+
+            {termsExpanded && (
+              <View style={styles.termsBox}>
+                {TERMS.map((term, index) => (
+                  <Text key={index} style={styles.termsItemText}>
+                    {index + 1}. {term}
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            {/* Checkout Button */}
+            <TouchableOpacity
+              style={[
+                styles.checkoutButton,
+                (!termsAccepted || cartItems.length === 0) &&
+                  styles.checkoutButtonDisabled,
+              ]}
+              disabled={!termsAccepted || cartItems.length === 0}
+              onPress={handleCheckout}
+            >
+              <Text style={styles.checkoutButtonText}>
+                Proceed to Checkout ({formatPrice(grandTotal)})
+              </Text>
+            </TouchableOpacity>
+          </>
         )}
-
-        <View style={{ height: 100 }} />
       </ScrollView>
-
-      {/* Fixed Bottom Bar */}
-      <View style={styles.bottomBar}>
-        <View>
-          <Text style={styles.bottomTotal}>{formatPrice(GRAND_TOTAL)}</Text>
-          <TouchableOpacity style={styles.viewDetailsRow}>
-            <Text style={styles.viewDetailsText}>View Details</Text>
-            <Ionicons name="chevron-up" size={14} color="#6B7089" />
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity
-          style={[
-            styles.buyNowLargeButton,
-            !termsAccepted && styles.buyNowLargeButtonDisabled,
-          ]}
-          disabled={!termsAccepted}
-          onPress={() => router.push("/sidepanel/wish_cart/wish_acess")}
-        >
-          <Text style={styles.buyNowLargeText}>Buy Now</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -307,42 +326,43 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#EDEEF5",
+    paddingHorizontal: 20,
+    paddingTop: 8,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 16,
+    marginTop: 12,
+    marginBottom: 16,
   },
   backButton: {
     width: 36,
     height: 36,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 4,
+    marginRight: 8,
   },
   headerTitle: {
-    fontSize: 19,
+    fontSize: 22,
     fontWeight: "700",
     color: "#0A1A3B",
   },
   tabRow: {
     flexDirection: "row",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#E2E5F0",
     borderRadius: 14,
-    marginHorizontal: 20,
     padding: 4,
-    marginBottom: 16,
+    marginBottom: 18,
   },
   tab: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 11,
     alignItems: "center",
+    justifyContent: "center",
   },
   tabActive: {
-    backgroundColor: "#0A1A3B",
+    backgroundColor: "#23408E",
   },
   tabInactive: {
     backgroundColor: "transparent",
@@ -355,10 +375,10 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   tabTextInactive: {
-    color: "#23408E",
+    color: "#6B7089",
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingBottom: 40,
   },
   cartCard: {
     flexDirection: "row",
@@ -367,37 +387,43 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 14,
     shadowColor: "#0A1A3B",
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   cartThumbnail: {
-    width: 70,
-    height: 70,
-    borderRadius: 10,
-    marginRight: 12,
-    backgroundColor: "#DCE0F0",
+    width: 100,
+    height: 95,
+    borderRadius: 12,
+    backgroundColor: "#F0F2F7",
   },
   cartCardBody: {
     flex: 1,
+    marginLeft: 12,
     justifyContent: "space-between",
   },
   cartTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
     color: "#0A1A3B",
-    marginBottom: 6,
+    lineHeight: 20,
+  },
+  durationBadgeText: {
+    fontSize: 12,
+    color: "#23408E",
+    fontWeight: "600",
+    marginTop: 2,
   },
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    marginVertical: 4,
   },
   priceNow: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#4B2E83",
+    color: "#0A1A3B",
     marginRight: 8,
   },
   priceMrp: {
@@ -407,113 +433,45 @@ const styles = StyleSheet.create({
   },
   cartActions: {
     flexDirection: "row",
+    gap: 8,
+    marginTop: 6,
   },
   removeButton: {
-    backgroundColor: "#F1E4B8",
-    borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 6,
-    marginRight: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E53935",
   },
   removeButtonText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#8A6D1F",
+    color: "#E53935",
   },
   buyNowSmallButton: {
-    backgroundColor: "#C9A227",
-    borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#23408E",
   },
   buyNowSmallText: {
     fontSize: 12,
     fontWeight: "600",
     color: "#FFFFFF",
   },
-  sectionHeading: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0A1A3B",
-    marginTop: 4,
-    marginBottom: 12,
-  },
-  saveMoreCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 20,
-  },
-  saveMoreBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#EAF7EE",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 14,
-  },
-  saveMoreBannerText: {
-    fontSize: 12.5,
-    color: "#16803C",
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  addOnRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  addOnAddButton: {
-    width: 56,
-    height: 48,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: "#23408E",
-    borderStyle: "dashed",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  addOnAddText: {
-    fontSize: 10,
-    color: "#23408E",
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  plusSign: {
-    fontSize: 16,
-    color: "#8A8FA3",
-    marginHorizontal: 10,
-  },
-  addOnThumbnailWrap: {
-    position: "relative",
-  },
-  addOnThumbnail: {
-    width: 56,
-    height: 48,
-    borderRadius: 10,
-    backgroundColor: "#DCE0F0",
-  },
-  checkBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: "#16A34A",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: "#FFFFFF",
-  },
   priceDetailsCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
+    marginVertical: 14,
+    shadowColor: "#0A1A3B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   priceDetailsHeading: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
     color: "#0A1A3B",
     marginBottom: 12,
@@ -521,139 +479,133 @@ const styles = StyleSheet.create({
   priceDetailsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   priceDetailsLabel: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#6B7089",
   },
-  priceDetailsValue: {
-    fontSize: 13,
-    color: "#0A1A3B",
-    fontWeight: "600",
-  },
   priceDetailsStrike: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#8A8FA3",
     textDecorationLine: "line-through",
   },
-  priceDetailsLabelBold: {
+  priceDetailsValue: {
     fontSize: 14,
+    fontWeight: "600",
+    color: "#0A1A3B",
+  },
+  totalRow: {
+    borderTopWidth: 1,
+    borderTopColor: "#E2E5F0",
+    paddingTop: 10,
+    marginTop: 4,
+  },
+  priceDetailsLabelBold: {
+    fontSize: 15,
     fontWeight: "700",
     color: "#0A1A3B",
   },
   priceDetailsValueBold: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#0A1A3B",
-  },
-  couponButton: {
-    backgroundColor: "#0A1A3B",
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginTop: 4,
-  },
-  couponButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#FFFFFF",
+    color: "#23408E",
   },
   termsRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    marginVertical: 12,
   },
   checkbox: {
     width: 20,
     height: 20,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: "#7A1F2B",
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: "#23408E",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 10,
   },
   checkboxChecked: {
-    backgroundColor: "#7A1F2B",
+    backgroundColor: "#23408E",
   },
-  termsText: {
-    flex: 1,
+  termsLabel: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#7A1F2B",
+    color: "#0A1A3B",
+    fontWeight: "500",
   },
-  termsChevron: {
-    marginLeft: 8,
-  },
-  termsList: {
+  termsBox: {
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
-    padding: 14,
+    padding: 12,
     marginBottom: 16,
   },
-  termsItem: {
-    flexDirection: "row",
-    marginBottom: 10,
-  },
-  termsItemNumber: {
-    fontSize: 12.5,
-    color: "#0A1A3B",
-    fontWeight: "600",
-    marginRight: 6,
-  },
   termsItemText: {
-    flex: 1,
-    fontSize: 12.5,
-    color: "#3A3F55",
-    lineHeight: 18,
-  },
-  bottomBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    shadowColor: "#0A1A3B",
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  bottomTotal: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#0A1A3B",
-  },
-  viewDetailsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 2,
-  },
-  viewDetailsText: {
     fontSize: 12,
-    color: "#6B7089",
-    marginRight: 4,
+    color: "#555",
+    lineHeight: 18,
+    marginBottom: 6,
   },
-  buyNowLargeButton: {
-    backgroundColor: "#C9A227",
-    borderRadius: 12,
-    paddingHorizontal: 36,
+  checkoutButton: {
+    backgroundColor: "#23408E",
     paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 8,
+    shadowColor: "#23408E",
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  buyNowLargeButtonDisabled: {
-    backgroundColor: "#E8DBAE",
+  checkoutButtonDisabled: {
+    backgroundColor: "#A0AEC0",
+    shadowOpacity: 0,
+    elevation: 0,
   },
-  buyNowLargeText: {
-    fontSize: 15,
+  checkoutButtonText: {
+    fontSize: 16,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  centerContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+  statusText: {
+    fontSize: 14,
+    color: "#6B7089",
+    marginTop: 10,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0A1A3B",
+    marginTop: 16,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: "#6B7089",
+    textAlign: "center",
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  exploreBtn: {
+    marginTop: 20,
+    backgroundColor: "#23408E",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  exploreBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

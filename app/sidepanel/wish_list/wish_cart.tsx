@@ -11,47 +11,17 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-
-interface WishlistLecture {
-  id: string;
-  thumbnail: string;
-  title: string;
-  lectureLabel: string;
-}
-
-const WISHLIST_LECTURES: WishlistLecture[] = [
-  {
-    id: "1",
-    thumbnail: "https://via.placeholder.com/300x180",
-    title: "Introduction",
-    lectureLabel: "Lecture 1",
-  },
-  {
-    id: "2",
-    thumbnail: "https://via.placeholder.com/300x180",
-    title: "Introduction",
-    lectureLabel: "Lecture 2",
-  },
-  {
-    id: "3",
-    thumbnail: "https://via.placeholder.com/300x180",
-    title: "Introduction",
-    lectureLabel: "Lecture 3",
-  },
-  {
-    id: "4",
-    thumbnail: "https://via.placeholder.com/300x180",
-    title: "Introduction",
-    lectureLabel: "Lecture 4",
-  },
-];
+import { useCartWishlist } from "@/src/context/CartWishlistContext";
+import { getImageUrl, FALLBACK_COURSE_IMAGE } from "@/src/api/client";
 
 export default function WishCart() {
   const [search, setSearch] = useState("");
+  const { wishlistItems } = useCartWishlist();
 
-  const filteredLectures = WISHLIST_LECTURES.filter((lecture) =>
-    lecture.title.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredItems = wishlistItems.filter((item) => {
+    const title = item.courseDetails?.title || "";
+    return title.toLowerCase().includes(search.toLowerCase());
+  });
 
   return (
     <View style={styles.container}>
@@ -62,6 +32,7 @@ export default function WishCart() {
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
+          hitSlop={10}
         >
           <Ionicons name="chevron-back" size={24} color="#0A1A3B" />
         </TouchableOpacity>
@@ -83,47 +54,56 @@ export default function WishCart() {
         />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search folders"
+          placeholder="Search items"
           placeholderTextColor="#8A8FA3"
           value={search}
           onChangeText={setSearch}
         />
       </View>
 
-      {/* Lecture Grid */}
+      {/* Grid */}
       <ScrollView
         contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
       >
-        {filteredLectures.map((lecture) => (
-          <TouchableOpacity
-            key={lecture.id}
-            style={styles.lectureCard}
-            activeOpacity={0.8}
-            onPress={() =>
-              router.push({
-                pathname: "/sidepanel/wish_list/wishlist",
-                params: { id: lecture.id },
-              })
-            }
-          >
-            <Image
-              source={{ uri: lecture.thumbnail }}
-              style={styles.thumbnail}
-              resizeMode="cover"
-            />
-            <View style={styles.cardBody}>
-              <Text style={styles.lectureTitle} numberOfLines={1}>
-                {lecture.title}
-              </Text>
-              <View style={styles.lectureBadge}>
-                <Text style={styles.lectureBadgeText}>
-                  {lecture.lectureLabel}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
+        {filteredItems.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No items found</Text>
+          </View>
+        ) : (
+          filteredItems.map((item) => {
+            const imgUri = getImageUrl(item.courseDetails?.presentation_image);
+            return (
+              <TouchableOpacity
+                key={item.wishlistItemId || item._id}
+                style={styles.lectureCard}
+                activeOpacity={0.8}
+                onPress={() =>
+                  router.push({
+                    pathname: "/sidepanel/wish_list/wishlist",
+                  })
+                }
+              >
+                <Image
+                  source={imgUri ? { uri: imgUri } : FALLBACK_COURSE_IMAGE}
+                  defaultSource={FALLBACK_COURSE_IMAGE}
+                  style={styles.thumbnail}
+                  resizeMode="cover"
+                />
+                <View style={styles.cardBody}>
+                  <Text style={styles.lectureTitle} numberOfLines={1}>
+                    {item.courseDetails?.title || "Saved Course"}
+                  </Text>
+                  <View style={styles.lectureBadge}>
+                    <Text style={styles.lectureBadgeText}>
+                      {item.enroll_type || "Course"}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -166,7 +146,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 16,
     height: 52,
-    marginBottom: 24,
+    marginBottom: 20,
     shadowColor: "#0A1A3B",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -182,49 +162,55 @@ const styles = StyleSheet.create({
     color: "#0A1A3B",
   },
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
     paddingBottom: 24,
   },
   lectureCard: {
-    width: "47%",
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    marginBottom: 16,
+    marginBottom: 14,
     overflow: "hidden",
     shadowColor: "#0A1A3B",
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
-    shadowRadius: 8,
+    shadowRadius: 6,
     elevation: 2,
   },
   thumbnail: {
     width: "100%",
-    height: 90,
-    backgroundColor: "#1A1210",
+    height: 140,
+    backgroundColor: "#F0F2F7",
   },
   cardBody: {
-    padding: 12,
-  },
-  lectureTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0A1A3B",
-    marginBottom: 8,
-  },
-  lectureBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#C9A227",
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    width: "100%",
+    padding: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
   },
+  lectureTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0A1A3B",
+    flex: 1,
+  },
+  lectureBadge: {
+    backgroundColor: "#E8EDFF",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 8,
+  },
   lectureBadgeText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#23408E",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: "#6B7089",
   },
 });

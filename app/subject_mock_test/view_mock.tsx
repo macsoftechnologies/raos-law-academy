@@ -14,6 +14,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import axios from "axios";
 import Toast from "react-native-toast-message";
+import { apiClient } from "@/src/api/client";
 
 
 interface MockTestPrelims {
@@ -75,7 +76,7 @@ interface PrelimesTestsResponse {
   data: PrelimesTest[];
 }
 
-const termsList = [
+const DEFAULT_TERMS = [
   "Are you sure you want to start the Civil Laws Mains Test?",
   "Once the test begins, you must complete it within 3 hours.",
   "After submission time, you'll get an additional 15 minutes grace period to scan your answer sheets, convert them into a PDF, and upload the file.",
@@ -86,20 +87,36 @@ const NAVY = "#0A1A3B";
 const GOLD = "#C9A227";
 
 export default function ViewMock() {
-  const { mocktest_subject_id, userId} = useLocalSearchParams<{
+  const { mocktest_subject_id, userId } = useLocalSearchParams<{
     mocktest_subject_id?: string;
     userId?: string;
   }>();
 
   // now an array, not a single object
   const [mockTests, setMockTests] = useState<MockTestSubjectDetail[]>([]);
-   const [testsList, setTestsList] = useState<PrelimesTest[]>([]);
+  const [testsList, setTestsList] = useState<PrelimesTest[]>([]);
+  const [termsList, setTermsList] = useState<string[]>(DEFAULT_TERMS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [activeMock, setActiveMock] = useState<MockTestSubjectDetail | null>(null);
+
+  useEffect(() => {
+    const fetchTerms = async () => {
+      try {
+        const res = await apiClient.post("/test-terms/by_type", { testType: "SMT" });
+        if (res.data?.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+          const apiTerms = res.data.data[0].terms_conditions;
+          if (Array.isArray(apiTerms) && apiTerms.length > 0) {
+            setTermsList(apiTerms);
+          }
+        }
+      } catch (e) {}
+    };
+    fetchTerms();
+  }, []);
 
   
   
@@ -350,7 +367,7 @@ const styles = StyleSheet.create({
   errorText: { color: "#8A8A8A", fontSize: 14, textAlign: "center" },
   card: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 14, marginBottom: 16 },
   previewWrap: { height: 130, borderRadius: 12, backgroundColor: "#F4F4F4", overflow: "hidden", marginBottom: 12, justifyContent: "center" },
-  previewOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.55)" },
+  previewOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(255,255,255,0.55)" },
   watermark: { position: "absolute", alignSelf: "center", fontSize: 26, fontWeight: "700", color: "rgba(0,0,0,0.12)", transform: [{ rotate: "-20deg" }] },
   cardTitle: { fontSize: 16, fontWeight: "700", color: "#111111", marginBottom: 10 },
   pillRow: { flexDirection: "row", gap: 10, marginBottom: 14 },

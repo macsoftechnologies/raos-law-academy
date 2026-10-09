@@ -12,6 +12,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import Toast from 'react-native-toast-message';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { CartWishlistProvider } from '@/src/context/CartWishlistContext';
+import '@/src/api/client';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -19,25 +21,27 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemeProvider
-          value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
-        >
-          <Stack
-            screenOptions={{
-              headerShown: false,
-            }}
-          />
+        <CartWishlistProvider>
+          <ThemeProvider
+            value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
+          >
+            <Stack
+              screenOptions={{
+                headerShown: false,
+              }}
+            />
 
-          <StatusBar
-            barStyle={
-              colorScheme === 'dark'
-                ? 'light-content'
-                : 'dark-content'
-            }
-          />
-        </ThemeProvider>
+            <StatusBar
+              barStyle={
+                colorScheme === 'dark'
+                  ? 'light-content'
+                  : 'dark-content'
+              }
+            />
+          </ThemeProvider>
 
-        <Toast />
+          <Toast />
+        </CartWishlistProvider>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );

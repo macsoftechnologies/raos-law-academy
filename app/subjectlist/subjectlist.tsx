@@ -65,13 +65,13 @@ export interface SubjectRef {
 export interface SubjectNote {
   _id: string;
   subject_notes_id: string;
-  notes_id: NotesItem[];
-  lawId: LawItem[];
+  notes_id?: NotesItem[] | any;
+  lawId?: LawItem[] | string;
   title: string;
   pdf_url: string;
   isLocked: boolean;
   presentation_image: string;
-  subjectId: SubjectRef[];
+  subjectId?: SubjectRef[] | string;
   createdAt: string;
   updatedAt: string;
   __v: number;
@@ -87,11 +87,11 @@ export interface SubjectNotesListResponse {
   data: SubjectNote[];
 }
 
-// Prepend to presentation_image filenames returned by the API.
-// Replace with your actual S3 / CDN base URL.
-const IMAGE_BASE_URL = "https://api.raoslawacademy.com/uploads/";
+import { useCartWishlist } from "@/src/context/CartWishlistContext";
+import { getImageUrl, FALLBACK_NOTE_IMAGE, apiClient } from "@/src/api/client";
+import { parseApiError } from "@/src/api/errorHandler";
 
-const FALLBACK_IMAGE = require("../../assets/images/Rectangle4367.png");
+const FALLBACK_IMAGE = FALLBACK_NOTE_IMAGE;
 
 const LAW_ID = "a816f02b-b03a-4e7a-a94c-bde6ba83c5f3";
 
@@ -101,6 +101,7 @@ const CRIMINAL_SUBCATEGORY_ID = "5bb52f35-5eb4-47f7-b292-4b31f62d0bb9";
 
 export default function SubjectList() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { cartCount } = useCartWishlist();
 
   const [selectedTab, setSelectedTab] = useState<"Civil" | "Criminal">(
     "Civil"
@@ -114,16 +115,22 @@ export default function SubjectList() {
       setLoading(true);
       setError(null);
       try {
-        const response = await axios.get<SubjectNotesListResponse>(
-          `https://api.raoslawacademy.com/subject-notes?page=1&limit=10&userId=2087594a-f461-4e54-9803-4d8924c5440c`
+        const effectiveUser = userId || "2087594a-f461-4e54-9803-4d8924c5440c";
+        const response = await apiClient.get<SubjectNotesListResponse>(
+          `/subject-notes?page=1&limit=10&userId=${effectiveUser}`
         );
 
-        if (response.data?.statusCode === 200) {
-          setNotesList(response.data.data);
+        if (
+          response.data?.statusCode === 200 ||
+          response.data?.statusCode === 201 ||
+          response.status === 200
+        ) {
+          setNotesList(response.data.data || []);
         }
       } catch (err: any) {
         console.log("Subject notes API error:", err?.response?.data || err.message);
-        setError("Failed to load subjects");
+        const parsed = parseApiError(err);
+        setError(parsed.message || "Failed to load subjects");
       } finally {
         setLoading(false);
       }
@@ -142,7 +149,7 @@ export default function SubjectList() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={28} color="#000" />
         </TouchableOpacity>
 
@@ -151,8 +158,32 @@ export default function SubjectList() {
           <Text style={styles.subtitle}>AP JCJ Subjects</Text>
         </View>
 
-        <TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/sidepanel/wish_cart/wish_buy")}
+          style={{ position: "relative", padding: 4 }}
+          hitSlop={10}
+        >
           <Ionicons name="cart-outline" size={28} color="#000" />
+          {cartCount > 0 && (
+            <View
+              style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                backgroundColor: "#E53935",
+                borderRadius: 9,
+                minWidth: 18,
+                height: 18,
+                justifyContent: "center",
+                alignItems: "center",
+                paddingHorizontal: 3,
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>
+                {cartCount}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -205,10 +236,11 @@ export default function SubjectList() {
             <View style={styles.card}>
               <Image
                 source={
-                  item.presentation_image
-                    ? { uri: IMAGE_BASE_URL + item.presentation_image }
+                  getImageUrl(item.presentation_image)
+                    ? { uri: getImageUrl(item.presentation_image) }
                     : FALLBACK_IMAGE
                 }
+                defaultSource={FALLBACK_IMAGE}
                 style={styles.image}
               />
 
@@ -223,7 +255,13 @@ export default function SubjectList() {
                   if (!item.isLocked) {
                     router.push({
                       pathname: "/subjectlist/courseoverviewdetails",
-                      params: { LAW_ID: LAW_ID, subjectId: item._id, userId: userId },
+                      params: {
+                        lawId: LAW_ID,
+                        LAW_ID: LAW_ID,
+                        subjectId: item._id,
+                        title: item.title,
+                        userId: userId,
+                      },
                     });
                   }
                 }}

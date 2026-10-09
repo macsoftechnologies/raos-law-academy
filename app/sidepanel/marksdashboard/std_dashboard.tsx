@@ -148,7 +148,7 @@ function ScoreRing({ score = 0, size = 96, strokeWidth = 8 }) {
           />
         </G>
       </Svg>
-      <View style={StyleSheet.absoluteFillObject}>
+      <View style={StyleSheet.absoluteFill}>
         <View style={styles.ringCenter}>
           <Text style={styles.ringScoreText}>{score}</Text>
         </View>

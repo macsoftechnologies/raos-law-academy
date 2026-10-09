@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,99 @@ import {
   TextInput,
   TouchableOpacity,
   SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import axios from 'axios';
+import Toast from 'react-native-toast-message';
 
 export default function AnotherLogin() {
+  const [contactText, setContactText] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleGenerateOTP = async () => {
+    const cleanContact = contactText.trim();
+    if (!cleanContact) {
+      Toast.show({
+        type: 'info',
+        text1: 'Validation',
+        text2: 'Please enter your mobile number or email',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await axios.post(
+        'https://api.raoslawacademy.com/users/loginanotherway',
+        {
+          text: cleanContact,
+        }
+      );
+
+      const statusCode = response.data?.statusCode;
+      const message = response.data?.message;
+      const userData = response.data?.data;
+
+      if (statusCode === 200 || statusCode === 201) {
+        Toast.show({
+          type: 'success',
+          text1: 'OTP Sent',
+          text2: typeof message === 'string' ? message : 'OTP sent successfully.',
+        });
+
+        router.push({
+          pathname: '/onboardings/mobile_verify',
+          params: {
+            userId: userData?.userId,
+            phone: userData?.mobile_number,
+            email: userData?.email,
+            name: userData?.name,
+            otp: userData?.otp ? String(userData.otp) : '',
+          },
+        });
+        return;
+      }
+
+      if (statusCode === 404) {
+        Toast.show({
+          type: 'error',
+          text1: 'User Not Found',
+          text2: 'No registered account found. Please sign up first.',
+        });
+        return;
+      }
+
+      Toast.show({
+        type: 'error',
+        text1: 'Request Failed',
+        text2: typeof message === 'string' ? message : 'Unable to generate OTP.',
+      });
+    } catch (error: any) {
+      console.log('Login another way error:', error?.response?.data || error.message);
+      const errorMsg = error?.response?.data?.message;
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: typeof errorMsg === 'string' ? errorMsg : 'Network error. Please try again.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-
-  
+      {/* Header with Back Button */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="arrow-back" size={24} color="#000" style={styles.backArrow} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Sign-in Other Way</Text>
+      </View>
 
       {/* Illustration */}
       <Image
@@ -36,20 +122,30 @@ export default function AnotherLogin() {
       {/* Input */}
       <TextInput
         style={styles.input}
-        placeholder="1234567689"
+        placeholder="Enter 10-digit number or email"
         placeholderTextColor="#9CA3AF"
         keyboardType="default"
+        autoCapitalize="none"
+        value={contactText}
+        onChangeText={setContactText}
       />
 
       {/* Button */}
-      <TouchableOpacity style={styles.button}  onPress={()=> router.push('/onboardings/mobile_verify')}>
-        <Text style={styles.buttonText}>Generate OTP</Text>
+      <TouchableOpacity
+        style={[styles.button, loading && { opacity: 0.7 }]}
+        onPress={handleGenerateOTP}
+        disabled={loading}
+        activeOpacity={0.8}
+      >
+        {loading ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <Text style={styles.buttonText}>Generate OTP</Text>
+        )}
       </TouchableOpacity>
-
     </SafeAreaView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
@@ -65,7 +161,6 @@ const styles = StyleSheet.create({
   },
 
   backArrow: {
-    fontSize: 22,
     marginRight: 10,
   },
 
@@ -78,7 +173,7 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: 260,
-    marginTop: 30,
+    marginTop: 20,
   },
 
   infoText: {
@@ -90,7 +185,7 @@ const styles = StyleSheet.create({
   },
 
   inputLabel: {
-    marginTop: 40,
+    marginTop: 30,
     fontSize: 15,
     fontWeight: '500',
     color: '#000',
@@ -108,7 +203,7 @@ const styles = StyleSheet.create({
   },
 
   button: {
-    marginTop: 50,
+    marginTop: 40,
     backgroundColor: '#1E3A8A',
     paddingVertical: 16,
     borderRadius: 12,

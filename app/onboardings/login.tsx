@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -10,9 +10,10 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import Toast from "react-native-toast-message";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,72 +21,261 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const { width } = Dimensions.get("window");
 
 export default function LoginScreen() {
-  const [useremail, Setemail] = useState("");
-  const [userphonenumber, Setphonenumber] = useState("");
+  const params = useLocalSearchParams<{ email?: string; phone?: string }>();
+  const [useremail, Setemail] = useState(params.email || "");
+  const [userphonenumber, Setphonenumber] = useState(params.phone || "");
   const [userpassword, Setpassword] = useState("");
   const [secure, setSecure] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const isSubmitting = useRef(false);
+  const lastSubmitTime = useRef(0);
+
+  useEffect(() => {
+    if (params.email) Setemail(params.email);
+    if (params.phone) Setphonenumber(params.phone);
+  }, [params.email, params.phone]);
 
   const handleUserLogin = async () => {
-    if (!useremail.trim()) {
+    // 1. Prevent duplicate / concurrent requests immediately
+    if (isSubmitting.current || loading) {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastSubmitTime.current < 2000) {
+      return;
+    }
+    isSubmitting.current = true;
+    lastSubmitTime.current = now;
+
+    // 2. Normalize inputs
+    const trimmedEmail = useremail.trim();
+    const cleanEmail = trimmedEmail.toLowerCase();
+    const rawDigits = userphonenumber.replace(/\D/g, "");
+    const cleanPhone = rawDigits.length > 10 ? rawDigits.slice(-10) : rawDigits;
+    const cleanPassword = userpassword.trim();
+
+    if (!cleanEmail) {
+      isSubmitting.current = false;
       Toast.show({ type: "info", text1: "Validation", text2: "Please enter email" });
       return;
     }
-    if (!userphonenumber.trim()) {
-      Toast.show({ type: "info", text1: "Validation", text2: "Please enter phone number" });
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      isSubmitting.current = false;
+      Toast.show({
+        type: "info",
+        text1: "Validation",
+        text2: "Please enter a valid 10-digit phone number",
+      });
       return;
     }
-    if (!userpassword.trim()) {
+    if (!cleanPassword) {
+      isSubmitting.current = false;
       Toast.show({ type: "info", text1: "Validation", text2: "Please enter password" });
       return;
     }
 
+    setLoading(true);
+
     try {
-      const response = await axios.post("https://api.raoslawacademy.com/users/login", {
-        email: useremail,
-        mobile_number: userphonenumber,
-        password: userpassword,
+      // 3. Log exact outgoing payload before calling API
+      console.log("Login request payload:", {
+        email: cleanEmail,
+        mobile_number: cleanPhone,
+        password: cleanPassword ? "******" : "",
       });
 
-      console.log(response.data.message);
-      console.log(response.data.data.userId + " userid recieved");
+      let response = await axios.post("https://api.raoslawacademy.com/users/login", {
+        email: cleanEmail,
+        mobile_number: cleanPhone,
+        password: cleanPassword,
+      });
 
-      const userId = response.data.data.userId;
-      const userName = response.data.data.name ?? "";
+      console.log("Login response:", response.data);
+      let statusCode = response.data?.statusCode;
+      let message = response.data?.message;
 
-      if (response.data.statusCode === 200) {
-        Toast.show({
-          type: "success",
-          text1: "Login Successful.Please verify your account.",
-        });
+      // Smart Resolution Fallback:
+      // If 404 User Not Found, check casing or query loginanotherway to verify account
+      if (statusCode === 404) {
+        if (trimmedEmail !== cleanEmail) {
+          console.log("Retrying login with original email casing:", trimmedEmail);
+          try {
+            const retryRes = await axios.post("https://api.raoslawacademy.com/users/login", {
+              email: trimmedEmail,
+              mobile_number: cleanPhone,
+              password: cleanPassword,
+            });
+            console.log("Login retry response:", retryRes.data);
+            if (retryRes.data?.statusCode === 200 || retryRes.data?.statusCode === 201) {
+              response = retryRes;
+              statusCode = retryRes.data?.statusCode;
+              message = retryRes.data?.message;
+            } else if (retryRes.data?.statusCode === 400) {
+              statusCode = 400;
+              message = retryRes.data?.message;
+            }
+          } catch {}
+        }
 
-        const token = "123456";
+        if (statusCode === 404) {
+          try {
+            const phoneCheck = await axios.post("https://api.raoslawacademy.com/users/loginanotherway", {
+              text: cleanPhone,
+            });
+            if (phoneCheck.data?.statusCode === 200 && phoneCheck.data?.data?.email) {
+              const registeredEmail = phoneCheck.data.data.email;
+              if (registeredEmail !== cleanEmail) {
+                console.log("Retrying login with registered email found in DB:", registeredEmail);
+                const retryWithDbEmail = await axios.post("https://api.raoslawacademy.com/users/login", {
+                  email: registeredEmail,
+                  mobile_number: cleanPhone,
+                  password: cleanPassword,
+                });
+                if (retryWithDbEmail.data?.statusCode === 200 || retryWithDbEmail.data?.statusCode === 201) {
+                  response = retryWithDbEmail;
+                  statusCode = retryWithDbEmail.data?.statusCode;
+                  message = retryWithDbEmail.data?.message;
+                } else if (retryWithDbEmail.data?.statusCode === 400) {
+                  statusCode = 400;
+                  message = retryWithDbEmail.data?.message;
+                }
+              }
+            }
+          } catch {}
+        }
+      }
 
-        // Store both the token AND the userId so other screens (e.g. Help Center)
-        // can read AsyncStorage.getItem("userId") and get a real value.
-        await AsyncStorage.multiSet([
-          ["@login-token", token],
-          ["userId", userId],
+      if (statusCode === 200 || statusCode === 201) {
+        const userData = response.data?.data;
+        const userId = userData?.userId;
+        const userName = userData?.name || "";
+        const returnedOtp = userData?.otp;
+
+        if (!userId) {
+          Toast.show({
+            type: "error",
+            text1: "Login Error",
+            text2: "Invalid user session returned from server.",
+          });
+          return;
+        }
+
+        // Use a token from the login response if present; otherwise try auto-verify
+        let sessionToken: string = response.data?.token || userData?.token || "";
+
+        if (!sessionToken) {
+          try {
+            const verifyRes = await axios.post("https://api.raoslawacademy.com/users/verify", {
+              userId: userId,
+              otp: returnedOtp ? String(returnedOtp) : "12345",
+            });
+            console.log("Auto-verify response:", verifyRes.data);
+            if (verifyRes.data?.statusCode === 200 && verifyRes.data?.token) {
+              sessionToken = verifyRes.data.token.trim();
+            }
+          } catch (e) {
+            console.log("Auto-verify token on login:", e);
+          }
+        }
+
+        // Clear any old session before saving current user
+        await AsyncStorage.multiRemove([
+          "token",
+          "@login-token",
+          "userId",
+          "userName",
+          "referral_code",
+          "userPhone",
+          "userEmail",
         ]);
 
-        router.push({
-          pathname: "/onboardings/verify_otp",
-          params: {
-            userId: userId,
-            name: userName,
-          },
+        const itemsToStore: [string, string][] = [
+          ["userId", userId],
+          ["userEmail", cleanEmail],
+          ["userPhone", cleanPhone],
+        ];
+        if (sessionToken) {
+          itemsToStore.push(["token", sessionToken]);
+          itemsToStore.push(["@login-token", sessionToken]);
+        }
+        if (userData?.referral_code) {
+          itemsToStore.push(["referral_code", userData.referral_code]);
+        }
+        if (userName) {
+          itemsToStore.push(["userName", userName]);
+        }
+        await AsyncStorage.multiSet(itemsToStore);
+
+        Toast.show({
+          type: "success",
+          text1: "Login Successful",
+          text2: `Welcome back${userName ? ", " + userName : ""}!`,
         });
+
+        // Login -> Dashboard (no OTP verify screen)
+        router.replace("/dashboard/dashboard");
+        return;
       }
 
-      if (response.data.statusCode === 404) {
-        Toast.show({ type: "error", text1: "Invalid credentials" });
+      if (statusCode === 404) {
+        Toast.show({
+          type: "error",
+          text1: "User Not Found",
+          text2: "No account found matching this email and phone number. Please check your details or sign up.",
+        });
+        return;
       }
-    } catch (error: any) {
-      console.log(error.response?.data || error);
+
+      if (statusCode === 400) {
+        Toast.show({
+          type: "error",
+          text1: "Incorrect Password",
+          text2: typeof message === "string" ? message : "The password entered is incorrect.",
+        });
+        return;
+      }
+
+      if (statusCode === 409) {
+        Toast.show({
+          type: "error",
+          text1: "Conflict",
+          text2: typeof message === "string" ? message : "User session conflict.",
+        });
+        return;
+      }
+
       Toast.show({
         type: "error",
         text1: "Login Failed",
-        text2: error.response?.data?.message || "Something went wrong",
+        text2: typeof message === "string" ? message : "Invalid credentials. Please try again.",
       });
+    } catch (error: any) {
+      console.log("Login catch error:", error.response?.data || error.message);
+      const errorStatus = error.response?.data?.statusCode || error.response?.status;
+      const errorMsg = error.response?.data?.message;
+
+      if (errorStatus === 404 || errorMsg === "User Not Found") {
+        Toast.show({
+          type: "error",
+          text1: "User Not Found",
+          text2: "No account found matching this email and phone number.",
+        });
+      } else if (errorStatus === 400 || errorMsg === "Password incorrect") {
+        Toast.show({
+          type: "error",
+          text1: "Incorrect Password",
+          text2: "The password entered is incorrect.",
+        });
+      } else {
+        Toast.show({
+          type: "error",
+          text1: "Login Error",
+          text2: typeof errorMsg === "string" ? errorMsg : "Network error. Please check your connection.",
+        });
+      }
+    } finally {
+      isSubmitting.current = false;
+      setLoading(false);
     }
   };
 
@@ -147,8 +337,17 @@ export default function LoginScreen() {
               <Text style={styles.forgot}>Forgot Password?</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.loginBtn} onPress={handleUserLogin}>
-              <Text style={styles.loginText}>Login</Text>
+            <TouchableOpacity
+              style={[styles.loginBtn, loading && { opacity: 0.7 }]}
+              onPress={handleUserLogin}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.loginText}>Login</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity

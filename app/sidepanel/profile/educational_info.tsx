@@ -363,16 +363,16 @@ export default function EducationalInfo() {
                     isUploaded
                       ? "check-circle"
                       : isError
-                      ? "alert-circle"
-                      : "upload-cloud"
+                        ? "alert-circle"
+                        : "upload-cloud"
                   }
                   size={16}
                   color={
                     isUploaded
                       ? COLORS.success
                       : isError
-                      ? COLORS.danger
-                      : COLORS.gray
+                        ? COLORS.danger
+                        : COLORS.gray
                   }
                 />
                 <Text
@@ -386,10 +386,10 @@ export default function EducationalInfo() {
                   {isUploading
                     ? "Uploading..."
                     : isUploaded
-                    ? data.fileName ?? "Uploaded"
-                    : isError
-                    ? "Upload failed — tap to retry"
-                    : "Upload Certificate (PDF or image)"}
+                      ? data.fileName ?? "Uploaded"
+                      : isError
+                        ? "Upload failed — tap to retry"
+                        : "Upload Certificate (PDF or image)"}
                 </Text>
               </TouchableOpacity>
             </View>

@@ -6,13 +6,17 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Toast from "react-native-toast-message";
+
+type TicketType = "course" | "support";
 
 interface CommonIssue {
   id: string;
@@ -21,12 +25,10 @@ interface CommonIssue {
   ticketType: TicketType;
 }
 
-type TicketType = "course" | "support";
-
 const COMMON_ISSUES: CommonIssue[] = [
-  { id: "1", label: "Course Content Access", icon: "credit-card", ticketType: "course" },
+  { id: "1", label: "Course Content Access", icon: "book-open", ticketType: "course" },
   { id: "2", label: "Payment & Billing", icon: "credit-card", ticketType: "support" },
-  { id: "3", label: "Payment & Billing", icon: "settings", ticketType: "support" },
+  { id: "3", label: "Account & Technical Support", icon: "settings", ticketType: "support" },
 ];
 
 interface TicketData {
@@ -35,20 +37,7 @@ interface TicketData {
   description: string;
   ticket_type: TicketType;
   status: "pending" | "in_progress" | "resolved" | "closed";
-  callScheduled: boolean;
-  callScheduledAt: string | null;
-  callStatus: "none" | "scheduled" | "completed" | "missed";
-  unreadCountStudent: number;
-  unreadCountAdmin: number;
-  lastMessageAt: string | null;
-  resolvedAt: string | null;
-  closedAt: string | null;
-  _id: string;
   ticketId: string;
-  messages: unknown[];
-  createdAt: string;
-  updatedAt: string;
-  __v: number;
 }
 
 interface CreateTicketResponse {
@@ -58,8 +47,9 @@ interface CreateTicketResponse {
 }
 
 const CREATE_TICKET_URL = "https://api.raoslawacademy.com/tickets/create";
+const DEFAULT_USER_ID = "7b682881-2d36-41b4-aca9-a9540bff291f";
 
-// Builds a short title from the description since the UI only collects one field.
+// Helper to derive a concise title from problem description
 const deriveTitle = (description: string) => {
   const trimmed = description.trim();
   return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
@@ -67,52 +57,49 @@ const deriveTitle = (description: string) => {
 
 export default function HelpCenterScreen() {
   const [problem, setProblem] = useState("");
+  const [customTitle, setCustomTitle] = useState("");
   const [ticketType, setTicketType] = useState<TicketType>("support");
   const [submitting, setSubmitting] = useState(false);
 
+  const handleSubmit = async () => {
+    if (!problem.trim() || submitting) return;
 
+    try {
+      setSubmitting(true);
 
- const handleSubmit = async () => {
-  console.log("handleSubmit called, problem:", problem);   // <-- add this
-  if (!problem.trim() || submitting) return;
+      const storedUserId = await AsyncStorage.getItem("userId");
+      const userId = storedUserId || DEFAULT_USER_ID;
 
-  try {
-    setSubmitting(true);
+      const title = customTitle.trim() || deriveTitle(problem);
 
-    const userId = await AsyncStorage.getItem("userId");
-    console.log("userId from storage:", userId);            // <-- add this
-    if (!userId) {
-      Alert.alert("Error", "You need to be logged in to submit a ticket.");
-      return;
-    }
+      const response = await axios.post<CreateTicketResponse>(
+        CREATE_TICKET_URL,
+        {
+          userId,
+          title,
+          description: problem.trim(),
+          ticket_type: ticketType,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 12000 }
+      );
 
-    console.log("Sending ticket request:", {                // <-- add this
-      userId,
-      title: deriveTitle(problem),
-      description: problem,
-      ticket_type: ticketType,
-    });
-
-    const response = await axios.post<CreateTicketResponse>(
-  "https://api.raoslawacademy.com/tickets/create",
-  {
-    userId,
-    title: deriveTitle(problem),
-    description: problem,
-    ticket_type: ticketType,
-  },
-  { timeout: 10000 }
-);
-
-      if (response.data.success) {
+      if (response.data?.success && response.data?.data?.ticketId) {
+        const createdTicketId = response.data.data.ticketId;
         setProblem("");
-        setTicketType("support");
+        setCustomTitle("");
+        Toast.show({
+          type: "success",
+          text1: "Ticket Created 🎉",
+          text2: `Ticket #${createdTicketId.slice(0, 8).toUpperCase()} submitted.`,
+        });
+
+        // Navigate to confirmation screen
         router.push({
-          pathname: "/sidepanel/help_center/help",
-          params: { ticketId: response.data.data.ticketId },
+          pathname: "/sidepanel/help_center/help_submit" as any,
+          params: { ticketId: createdTicketId },
         });
       } else {
-        Alert.alert("Error", response.data.message || "Failed to submit ticket.");
+        Alert.alert("Error", response.data?.message || "Failed to submit ticket.");
       }
     } catch (error: any) {
       console.log(
@@ -137,7 +124,7 @@ export default function HelpCenterScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
@@ -146,7 +133,7 @@ export default function HelpCenterScreen() {
         <Text style={styles.headerTitle}>Help Center</Text>
         <TouchableOpacity
           style={styles.ticketsButton}
-          onPress={() => router.push("/sidepanel/help_center/help")}
+          onPress={() => router.push("/sidepanel/help_center/help_issue")}
         >
           <Text style={styles.ticketsButtonText}>Tickets Status</Text>
         </TouchableOpacity>
@@ -156,12 +143,55 @@ export default function HelpCenterScreen() {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
+        {/* Category Picker */}
+        <Text style={styles.fieldLabel}>Issue Type</Text>
+        <View style={styles.typeSelector}>
+          <TouchableOpacity
+            style={[styles.typeOption, ticketType === "course" && styles.typeOptionActive]}
+            onPress={() => setTicketType("course")}
+          >
+            <Feather
+              name="book"
+              size={16}
+              color={ticketType === "course" ? "#FFFFFF" : "#4B5563"}
+            />
+            <Text
+              style={[
+                styles.typeOptionText,
+                ticketType === "course" && styles.typeOptionTextActive,
+              ]}
+            >
+              Course Issue
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.typeOption, ticketType === "support" && styles.typeOptionActive]}
+            onPress={() => setTicketType("support")}
+          >
+            <Feather
+              name="headphones"
+              size={16}
+              color={ticketType === "support" ? "#FFFFFF" : "#4B5563"}
+            />
+            <Text
+              style={[
+                styles.typeOptionText,
+                ticketType === "support" && styles.typeOptionTextActive,
+              ]}
+            >
+              General & Payment
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Problem input */}
+        <Text style={styles.fieldLabel}>Describe Your Problem</Text>
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
-            placeholder="Describe your problem..."
+            placeholder="Describe your problem in detail..."
             placeholderTextColor="#6B7280"
             value={problem}
             onChangeText={setProblem}
@@ -198,9 +228,11 @@ export default function HelpCenterScreen() {
           onPress={handleSubmit}
           disabled={!problem.trim() || submitting}
         >
-          <Text style={styles.submitButtonText}>
-            {submitting ? "Submitting..." : "Submit Problem"}
-          </Text>
+          {submitting ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.submitButtonText}>Submit Problem</Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -217,7 +249,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: 38,
+    paddingTop: 12,
     paddingBottom: 12,
   },
   headerTitle: {
@@ -230,7 +262,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
-    paddingTop:6,
   },
   ticketsButtonText: {
     color: "#FFFFFF",
@@ -243,13 +274,49 @@ const styles = StyleSheet.create({
   bodyContent: {
     paddingHorizontal: 16,
     paddingBottom: 24,
-    paddingTop: 18
+    paddingTop: 8,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  typeSelector: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+  },
+  typeOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+  },
+  typeOptionActive: {
+    backgroundColor: "#1E3A8A",
+    borderColor: "#1E3A8A",
+  },
+  typeOptionText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4B5563",
+  },
+  typeOptionTextActive: {
+    color: "#FFFFFF",
   },
   inputContainer: {
     borderWidth: 1.5,
     borderColor: "#2563EB",
     borderRadius: 14,
-    padding: 14,
+    padding: 12,
     backgroundColor: "#F3F5FA",
   },
   input: {
@@ -266,16 +333,15 @@ const styles = StyleSheet.create({
     color: "#111827",
     marginTop: 20,
     marginBottom: 12,
-  
   },
   issueRow: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 14,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   issueIconWrap: {
     width: 28,
@@ -289,7 +355,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 16,
-    paddingBottom: 20,
+    paddingBottom: 16,
     paddingTop: 8,
   },
   submitButton: {
